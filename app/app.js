@@ -301,7 +301,7 @@ async function fetchStream(slug, ep) {
     // Tizen: use the CF Worker in rewrite mode — video.src is a real https:// URL,
     // no local service or Service Worker needed. The worker rewrites every segment
     // URL to also route through itself, forwarding the correct Referer/Origin.
-    if (typeof tizen !== 'undefined') {
+    if (typeof tizen !== 'undefined' || /Tizen|SMART-TV/i.test(navigator.userAgent)) {
       const streamUrl = HLS_PROXY
         + '?url=' + encodeURIComponent(m3u8Url)
         + '&ref=' + encodeURIComponent(embedUrl)
