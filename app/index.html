@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>TizenAnime</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23e53935'/><text x='50' y='72' font-size='58' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'>TA</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── Loading ─────────────────────────────────────────────────────────────── -->
+<div id="screen-loading" class="screen">
+  <div class="loading-center">
+    <div class="loading-title-row">
+      <h1 class="logo">TizenAnime</h1><span class="loading-version"></span>
+    </div>
+    <p class="loading-status">Đang khởi động...</p>
+  </div>
+</div>
+
+<!-- ── About ──────────────────────────────────────────────────────────────── -->
+<div id="screen-about" class="screen">
+  <div class="setup-box">
+    <h1 class="logo">TizenAnime</h1>
+    <p class="setup-label" id="about-version"></p>
+    <p class="setup-hint">Nguồn: wibu47.vip</p>
+    <button id="btn-close-about" type="button">Đóng</button>
+  </div>
+</div>
+
+<!-- ── Home ───────────────────────────────────────────────────────────────── -->
+<div id="screen-home" class="screen">
+  <nav id="sidebar">
+    <div class="sidebar-logo">TizenAnime</div>
+    <ul id="sidebar-list"></ul>
+    <p id="sidebar-version" class="sidebar-version"></p>
+  </nav>
+  <div id="home-content">
+    <div id="home-header">
+      <h2 id="home-cat-name"></h2>
+      <span id="home-page-info"></span>
+    </div>
+    <div id="home-grid"></div>
+    <div id="home-loading" class="center-loading hidden"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ── Search ─────────────────────────────────────────────────────────────── -->
+<div id="screen-search" class="screen">
+  <div id="search-header">
+    <div id="search-input-wrap">
+      <span id="search-icon">&#9906;</span>
+      <input id="search-input" type="search" placeholder="Tìm kiếm anime..." autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+  </div>
+  <div id="search-results"></div>
+</div>
+
+<!-- ── Series ─────────────────────────────────────────────────────────────── -->
+<div id="screen-series" class="screen">
+  <div id="series-content"></div>
+</div>
+
+<!-- ── Player ─────────────────────────────────────────────────────────────── -->
+<div id="screen-player" class="screen">
+  <video id="video" autoplay></video>
+  <div id="player-overlay">
+    <div id="player-title"></div>
+    <div class="player-bar">
+      <span id="player-time">0:00 / 0:00</span>
+      <div class="seek-bar"><div id="seek-fill"></div></div>
+    </div>
+    <div id="player-hint">◀▶ Tua  •  OK Tạm dừng  •  ← Quay lại</div>
+  </div>
+</div>
+
+<script async src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
