@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.17';
+const VERSION   = '1.0.18';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://corsproxy.io/?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
@@ -180,6 +180,12 @@ function registerTizenKeys() {
   } catch (_) {}
 }
 
+// ── Remote log relay ─────────────────────────────────────────────────────────
+function rlog(msg) {
+  console.log(msg);
+  fetch(HLS_PROXY, { method: 'POST', body: String(msg), headers: { 'Content-Type': 'text/plain' } }).catch(() => {});
+}
+
 // ── CORS-proxy fetch ──────────────────────────────────────────────────────────
 async function proxyFetch(url) {
   const res = await fetch(CORS + encodeURIComponent(url));
@@ -309,23 +315,21 @@ async function fetchStream(slug, ep) {
 // Fetch the rewritten m3u8 via JS (avoids Tizen rejecting worker URLs as video.src),
 // resolve master→variant if needed, return a blob URL with worker segment URLs intact.
 async function fetchRewrittenM3u8AsBlob(m3u8Url, referer) {
-  const dbg = s => { window._m3u8dbg = s; document.getElementById('player-title').textContent = s; };
-
   const workerUrl = HLS_PROXY + '?url=' + encodeURIComponent(m3u8Url)
     + '&ref=' + encodeURIComponent(referer) + '&rewrite=1';
   const res  = await fetch(workerUrl);
   const text = await res.text();
-  dbg('master ' + res.status + ': ' + text.substring(0, 120).replace(/\n/g, '|'));
+  rlog('master ' + res.status + ': ' + text.substring(0, 200).replace(/\n/g, '|'));
   if (!res.ok || !text.startsWith('#EXTM3U')) throw new Error('bad m3u8: ' + text.substring(0, 80));
 
   if (text.includes('#EXT-X-STREAM-INF')) {
     for (const line of text.split('\n')) {
       const t = line.trim();
       if (!t || t.startsWith('#')) continue;
-      dbg('variant fetch: ' + t.substring(0, 80));
+      rlog('variant url: ' + t.substring(0, 120));
       const varRes  = await fetch(t);
       const varText = await varRes.text();
-      dbg('variant ' + varRes.status + ': ' + varText.substring(0, 120).replace(/\n/g, '|'));
+      rlog('variant ' + varRes.status + ': ' + varText.substring(0, 200).replace(/\n/g, '|'));
       if (!varRes.ok || !varText.startsWith('#EXTM3U')) throw new Error('bad variant: ' + varText.substring(0, 80));
       const blob = new Blob([varText], { type: 'application/vnd.apple.mpegurl' });
       return URL.createObjectURL(blob);
@@ -333,7 +337,7 @@ async function fetchRewrittenM3u8AsBlob(m3u8Url, referer) {
     throw new Error('no variant in master');
   }
 
-  dbg('media: ' + text.substring(0, 120).replace(/\n/g, '|'));
+  rlog('media playlist: ' + text.substring(0, 300).replace(/\n/g, '|'));
   const blob = new Blob([text], { type: 'application/vnd.apple.mpegurl' });
   return URL.createObjectURL(blob);
 }
@@ -783,14 +787,17 @@ function startPlayback(url) {
     const code = video.error?.code;
     const msg  = video.error?.message || '';
     console.error('[video] error code=' + code + ' msg=' + msg);
-    showOverlayPersistent();   // keep overlay visible until user presses Back
+    showOverlayPersistent();
     const titleEl = document.getElementById('player-title');
-    titleEl.textContent = `Lỗi phát video (code ${code}) — ${msg || '?'} — đang chẩn đoán...`;
+    titleEl.textContent = `[${code}] ${msg || '?'} — diagnosing...`;
+    rlog('video error code=' + code + ' msg=' + msg + ' url=' + String(url).substring(0, 80));
     fetch(url).then(r => r.text()).then(t => {
-      titleEl.textContent = `[${code}] ${msg} || ${t.substring(0, 400).replace(/\n/g, ' | ')}`;
-      console.log('[video] m3u8 preview:', t.substring(0, 600));
+      const preview = t.substring(0, 300).replace(/\n/g, '|');
+      titleEl.textContent = `[${code}] ${msg} | ${preview}`;
+      rlog('video error content: ' + t.substring(0, 500).replace(/\n/g, '|'));
     }).catch(e2 => {
-      titleEl.textContent = `[${code}] ${msg} || fetch err: ${e2.message}`;
+      titleEl.textContent = `[${code}] ${msg} | fetch err: ${e2.message}`;
+      rlog('video error fetch failed: ' + e2.message);
     });
   });
   video.src = url;

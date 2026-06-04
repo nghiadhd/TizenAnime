@@ -11,6 +11,13 @@ async function handleRequest(request) {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
+  // Log relay: POST without ?url= → TV is sending a log line
+  if (request.method === 'POST') {
+    const body = await request.text().catch(() => '(unreadable)');
+    console.log('[TV]', body);
+    return new Response('ok', { headers: corsHeaders() });
+  }
+
   const reqUrl = new URL(request.url);
   const { searchParams } = reqUrl;
   const target  = searchParams.get('url');
