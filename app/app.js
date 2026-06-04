@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.12';
+const VERSION   = '1.0.13';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://corsproxy.io/?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
@@ -121,10 +121,8 @@ const state = {
   search: { query: '', items: [], loading: false, focus: -1, _debounce: null },
 
   // Player
-  hls: null,
   overlayTimer: null,
   currentVideoId: null,
-  hlsUrls: [],
 };
 
 // ── Viewport scaling (FHD / 4K / desktop) ────────────────────────────────────
@@ -298,116 +296,18 @@ async function fetchStream(slug, ep) {
     const m3u8Url = `https://${embedHost}/${outerJson.sUb}.m3u8`;
     console.log('[stream] m3u8 url:', m3u8Url);
 
-    // Tizen: use the CF Worker in rewrite mode — video.src is a real https:// URL,
-    // no local service or Service Worker needed. The worker rewrites every segment
-    // URL to also route through itself, forwarding the correct Referer/Origin.
-    if (typeof tizen !== 'undefined' || /Tizen|SMART-TV/i.test(navigator.userAgent)) {
-      const streamUrl = HLS_PROXY
-        + '?url=' + encodeURIComponent(m3u8Url)
-        + '&ref=' + encodeURIComponent(embedUrl)
-        + '&rewrite=1';
-      console.log('[stream] tizen cf-worker url:', streamUrl.substring(0, 60));
-      return { url: streamUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
-    }
-
-    const blobUrl = await buildProxyM3u8(m3u8Url, embedUrl);
-    console.log('[stream] blob url created:', blobUrl.substring(0, 40));
-    return { url: blobUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
+    const streamUrl = HLS_PROXY
+      + '?url=' + encodeURIComponent(m3u8Url)
+      + '&ref=' + encodeURIComponent(embedUrl)
+      + '&rewrite=1';
+    console.log('[stream] cf-worker url:', streamUrl.substring(0, 80));
+    return { url: streamUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
   }
 
   console.log('[stream] no VPRO — falling back to external url');
   return { externalUrl: watchUrl, name: 'Wibu47', title: `Tập ${ep}` };
 }
 
-// Fetch the m3u8 chain via the Cloudflare Worker (which forwards the Referer).
-// Segments stay as direct CDN URLs — HLS CDNs typically serve CORS: * on .ts files.
-// A blob URL is returned so HLS.js / native video has a same-origin base to work from.
-async function buildProxyM3u8(m3u8Url, referer) {
-  const workerUrl = HLS_PROXY + '?url=' + encodeURIComponent(m3u8Url)
-    + (referer ? '&ref=' + encodeURIComponent(referer) : '') + '&raw=1';
-  console.log('[m3u8] fetching via worker:', m3u8Url);
-  const res  = await fetch(workerUrl);
-  const text = await res.text();
-  console.log('[m3u8] status:', res.status, '| length:', text.length, '| starts with:', text.substring(0, 30).replace(/\n/g, '\\n'));
-  if (!res.ok) throw new Error(`m3u8 fetch failed ${res.status}: ${text.substring(0, 80)}`);
-  if (!text.startsWith('#EXTM3U')) throw new Error('bad m3u8: ' + text.substring(0, 80));
-
-  const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
-
-  // Master playlist: pick the first variant and recurse (pass same referer)
-  if (text.includes('#EXT-X-STREAM-INF')) {
-    for (const line of text.split('\n')) {
-      const t = line.trim();
-      if (!t || t.startsWith('#')) continue;
-      return buildProxyM3u8(t.startsWith('http') ? t : baseUrl + t, referer);
-    }
-    throw new Error('no variant in master');
-  }
-
-  // Derive the embed origin to pass as Referer/Origin when the service proxies segments.
-  let embedOrigin = 'https://embed1.streamc.xyz';
-  try { if (referer) embedOrigin = new URL(referer).origin; } catch (_) {}
-  const segRef = encodeURIComponent(embedOrigin + '/');
-
-  function rewriteSegments(segPrefix) {
-    let firstSeg = false;
-    return text.split('\n')
-      .filter(line => {
-        if (line.trim() === '#EXT-X-DISCONTINUITY' && !firstSeg) return false;
-        if (line.trim().startsWith('#EXTINF')) firstSeg = true;
-        return true;
-      })
-      .map(line => {
-        const t = line.trim();
-        if (!t || t.startsWith('#')) return line;
-        const abs = t.startsWith('http') ? t : baseUrl + t;
-        return segPrefix + encodeURIComponent(abs) + '&ref=' + segRef;
-      })
-      .join('\n');
-  }
-
-  // Segments routed via /seg-proxy → SW → local service (desktop dev path).
-  const rewritten = rewriteSegments('/seg-proxy?url=');
-
-  if (await hasActiveSwController()) {
-    const id  = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    const url = '/hls/' + id;
-    try {
-      const cache = await caches.open('tizenanime-hls-v1');
-      await cache.put(url, new Response(rewritten, {
-        headers: { 'Content-Type': 'application/vnd.apple.mpegurl' },
-      }));
-      state.hlsUrls.push(url);
-      return url;
-    } catch (_) {}
-  }
-
-  const blob = new Blob([rewritten], { type: 'application/vnd.apple.mpegurl' });
-  const burl = URL.createObjectURL(blob);
-  state.hlsUrls.push(burl);
-  return burl;
-}
-
-async function hasActiveSwController(timeoutMs = 2500) {
-  if (!('serviceWorker' in navigator)) return false;
-  if (navigator.serviceWorker.controller) return true;
-  // Race `ready` against the caller's timeout so Tizen firmware that never
-  // resolves `ready` doesn't hang the whole function indefinitely.
-  try {
-    await Promise.race([
-      navigator.serviceWorker.ready,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('sw ready timeout')), timeoutMs)),
-    ]);
-  } catch (_) { return false; }
-  if (navigator.serviceWorker.controller) return true;
-
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (navigator.serviceWorker.controller) return true;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  return false;
-}
 
 // ── Screen switcher ───────────────────────────────────────────────────────────
 function showScreen(name) {
@@ -805,8 +705,7 @@ function renderSeries() {
 // ── Player ────────────────────────────────────────────────────────────────────
 async function playEpisode(videoId) {
   showScreen('player');
-  revokeBlobUrls();   // clean up previous episode before creating new blobs
-  document.getElementById('player-title').textContent = '...';
+document.getElementById('player-title').textContent = '...';
   document.getElementById('seek-fill').style.width = '0%';
   document.getElementById('player-time').textContent = '0:00 / 0:00';
   showOverlayPersistent();
@@ -844,66 +743,35 @@ function startPlayback(url) {
   video.ontimeupdate = updatePlayerBar;
   video.onended      = () => playNext();
 
-  if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    // Native HLS (Safari, Tizen): <video> fetches segments as media resources — CORS not enforced.
-    video.addEventListener('loadedmetadata', () => console.log('[video] loadedmetadata duration=' + video.duration), { once: true });
-    video.addEventListener('canplay',        () => console.log('[video] canplay'), { once: true });
-    video.addEventListener('playing',        () => console.log('[video] playing'), { once: true });
-    video.addEventListener('stalled',        () => console.log('[video] stalled'));
-    video.addEventListener('waiting',        () => console.log('[video] waiting'));
-    video.addEventListener('error', () => {
-      const code = video.error?.code;
-      const msg  = video.error?.message || '';
-      console.error('[video] error code=' + code + ' msg=' + msg);
-      const titleEl = document.getElementById('player-title');
-      titleEl.textContent = `Lỗi phát video (code ${code}) — ${msg || 'không rõ nguyên nhân'} — đang chẩn đoán...`;
-      fetch(url).then(r => r.text()).then(t => {
-        const preview = t.substring(0, 300).replace(/\n/g, ' | ');
-        titleEl.textContent = `[code ${code}] ${msg} | m3u8: ${preview}`;
-        console.log('[video] m3u8 preview:', t.substring(0, 500));
-      }).catch(e2 => {
-        titleEl.textContent = `[code ${code}] ${msg} | fetch failed: ${e2.message}`;
-      });
+  video.addEventListener('loadedmetadata', () => console.log('[video] loadedmetadata duration=' + video.duration), { once: true });
+  video.addEventListener('canplay',        () => console.log('[video] canplay'), { once: true });
+  video.addEventListener('playing',        () => console.log('[video] playing'), { once: true });
+  video.addEventListener('stalled',        () => console.log('[video] stalled'));
+  video.addEventListener('waiting',        () => console.log('[video] waiting'));
+  video.addEventListener('error', () => {
+    const code = video.error?.code;
+    const msg  = video.error?.message || '';
+    console.error('[video] error code=' + code + ' msg=' + msg);
+    const titleEl = document.getElementById('player-title');
+    titleEl.textContent = `Lỗi phát video (code ${code}) — ${msg || 'không rõ nguyên nhân'} — đang chẩn đoán...`;
+    fetch(url).then(r => r.text()).then(t => {
+      const preview = t.substring(0, 300).replace(/\n/g, ' | ');
+      titleEl.textContent = `[code ${code}] ${msg} | m3u8: ${preview}`;
+      console.log('[video] m3u8 preview:', t.substring(0, 500));
+    }).catch(e2 => {
+      titleEl.textContent = `[code ${code}] ${msg} | fetch failed: ${e2.message}`;
     });
-    video.src = url;
-    video.load();
-    const p = video.play();
-    if (p && p.catch) p.catch(e => console.warn('[video] play() rejected:', e.name, e.message));
-  } else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-    // HLS.js fallback (Chrome): CDN segments will fail CORS — playback works on Safari/Tizen only.
-    const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 90 });
-    state.hls = hls;
-    hls.loadSource(url);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      console.log('[hls] manifest parsed, starting play');
-      video.play().catch(e => console.warn('[hls] play() rejected:', e.message));
-    });
-    hls.on(Hls.Events.ERROR, (_, data) => {
-      console.warn(`[hls] error fatal=${data.fatal} type=${data.type} details=${data.details}`);
-      if (data.fatal) {
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-      }
-    });
-  }
+  });
+  video.src = url;
+  video.load();
+  const p = video.play();
+  if (p && p.catch) p.catch(e => console.warn('[video] play() rejected:', e.name, e.message));
 }
 
 function stopPlayback() {
   const video = document.getElementById('video');
-  if (state.hls) { state.hls.destroy(); state.hls = null; }
   if (video) { video.src = ''; video.ontimeupdate = null; video.onended = null; }
   clearTimeout(state.overlayTimer);
-  revokeBlobUrls();
-}
-
-function revokeBlobUrls() {
-  const urls = state.hlsUrls.splice(0);
-  caches.open('tizenanime-hls-v1').then(cache => urls.forEach(u => {
-    if (u.startsWith('blob:'))          URL.revokeObjectURL(u);
-    else if (u.startsWith('/hls/'))     cache.delete(u);
-    // http://localhost:7777/hls/* entries expire automatically (1h TTL in service)
-  })).catch(() => {});
 }
 
 function playNext() {
