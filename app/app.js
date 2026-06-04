@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.16';
+const VERSION   = '1.0.17';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://corsproxy.io/?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
@@ -783,14 +783,14 @@ function startPlayback(url) {
     const code = video.error?.code;
     const msg  = video.error?.message || '';
     console.error('[video] error code=' + code + ' msg=' + msg);
+    showOverlayPersistent();   // keep overlay visible until user presses Back
     const titleEl = document.getElementById('player-title');
-    titleEl.textContent = `Lỗi phát video (code ${code}) — ${msg || 'không rõ nguyên nhân'} — đang chẩn đoán...`;
+    titleEl.textContent = `Lỗi phát video (code ${code}) — ${msg || '?'} — đang chẩn đoán...`;
     fetch(url).then(r => r.text()).then(t => {
-      const preview = t.substring(0, 300).replace(/\n/g, ' | ');
-      titleEl.textContent = `[code ${code}] ${msg} | m3u8: ${preview}`;
-      console.log('[video] m3u8 preview:', t.substring(0, 500));
+      titleEl.textContent = `[${code}] ${msg} || ${t.substring(0, 400).replace(/\n/g, ' | ')}`;
+      console.log('[video] m3u8 preview:', t.substring(0, 600));
     }).catch(e2 => {
-      titleEl.textContent = `[code ${code}] ${msg} | fetch failed: ${e2.message}`;
+      titleEl.textContent = `[${code}] ${msg} || fetch err: ${e2.message}`;
     });
   });
   video.src = url;
