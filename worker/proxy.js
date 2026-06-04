@@ -67,7 +67,8 @@ async function handleRequest(request) {
     return new Response('bad m3u8: ' + text.substring(0, 120), { status: 502, headers: corsHeaders() });
   }
 
-  const baseUrl    = target.substring(0, target.lastIndexOf('/') + 1);
+  const finalUrl   = upstream.url || target;
+  const baseUrl    = finalUrl.substring(0, finalUrl.lastIndexOf('/') + 1);
   const workerBase = reqUrl.origin + '/?';
   const encodedRef = encodeURIComponent(referer || origin + '/');
 
