@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.14';
+const VERSION   = '1.0.15';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://corsproxy.io/?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
@@ -309,22 +309,23 @@ async function fetchStream(slug, ep) {
 // Fetch the rewritten m3u8 via JS (avoids Tizen rejecting worker URLs as video.src),
 // resolve master→variant if needed, return a blob URL with worker segment URLs intact.
 async function fetchRewrittenM3u8AsBlob(m3u8Url, referer) {
+  const dbg = s => { window._m3u8dbg = s; document.getElementById('player-title').textContent = s; };
+
   const workerUrl = HLS_PROXY + '?url=' + encodeURIComponent(m3u8Url)
     + '&ref=' + encodeURIComponent(referer) + '&rewrite=1';
   const res  = await fetch(workerUrl);
   const text = await res.text();
-  console.log('[m3u8] status:', res.status, 'starts:', text.substring(0, 40).replace(/\n/g, '\\n'));
+  dbg('master ' + res.status + ': ' + text.substring(0, 120).replace(/\n/g, '|'));
   if (!res.ok || !text.startsWith('#EXTM3U')) throw new Error('bad m3u8: ' + text.substring(0, 80));
 
-  // Master playlist — pick first variant (already a rewritten worker URL) and recurse
   if (text.includes('#EXT-X-STREAM-INF')) {
     for (const line of text.split('\n')) {
       const t = line.trim();
       if (!t || t.startsWith('#')) continue;
-      // t is already a full worker URL (rewrite=1 was applied by the worker)
+      dbg('variant fetch: ' + t.substring(0, 80));
       const varRes  = await fetch(t);
       const varText = await varRes.text();
-      console.log('[m3u8] variant status:', varRes.status, 'starts:', varText.substring(0, 40).replace(/\n/g, '\\n'));
+      dbg('variant ' + varRes.status + ': ' + varText.substring(0, 120).replace(/\n/g, '|'));
       if (!varRes.ok || !varText.startsWith('#EXTM3U')) throw new Error('bad variant: ' + varText.substring(0, 80));
       const blob = new Blob([varText], { type: 'application/vnd.apple.mpegurl' });
       return URL.createObjectURL(blob);
@@ -332,6 +333,7 @@ async function fetchRewrittenM3u8AsBlob(m3u8Url, referer) {
     throw new Error('no variant in master');
   }
 
+  dbg('media: ' + text.substring(0, 120).replace(/\n/g, '|'));
   const blob = new Blob([text], { type: 'application/vnd.apple.mpegurl' });
   return URL.createObjectURL(blob);
 }
