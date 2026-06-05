@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.19';
+const VERSION   = '1.0.20';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://corsproxy.io/?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
@@ -123,7 +123,6 @@ const state = {
   // Player
   overlayTimer: null,
   currentVideoId: null,
-  currentBlobUrl: null,
 };
 
 // ── Viewport scaling (FHD / 4K / desktop) ────────────────────────────────────
@@ -303,44 +302,18 @@ async function fetchStream(slug, ep) {
     const m3u8Url = `https://${embedHost}/${outerJson.sUb}.m3u8`;
     console.log('[stream] m3u8 url:', m3u8Url);
 
-    const blobUrl = await fetchRewrittenM3u8AsBlob(m3u8Url, embedUrl);
-    console.log('[stream] blob url:', blobUrl.substring(0, 40));
-    return { url: blobUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
+    const streamUrl = HLS_PROXY
+      + '?url=' + encodeURIComponent(m3u8Url)
+      + '&ref=' + encodeURIComponent(embedUrl)
+      + '&rewrite=1';
+    rlog('stream url: ' + streamUrl.substring(0, 100));
+    return { url: streamUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
   }
 
   console.log('[stream] no VPRO — falling back to external url');
   return { externalUrl: watchUrl, name: 'Wibu47', title: `Tập ${ep}` };
 }
 
-// Fetch the rewritten m3u8 via JS (avoids Tizen rejecting worker URLs as video.src),
-// resolve master→variant if needed, return a blob URL with worker segment URLs intact.
-async function fetchRewrittenM3u8AsBlob(m3u8Url, referer) {
-  const workerUrl = HLS_PROXY + '?url=' + encodeURIComponent(m3u8Url)
-    + '&ref=' + encodeURIComponent(referer) + '&rewrite=1';
-  const res  = await fetch(workerUrl);
-  const text = await res.text();
-  rlog('master ' + res.status + ': ' + text.substring(0, 200).replace(/\n/g, '|'));
-  if (!res.ok || !text.startsWith('#EXTM3U')) throw new Error('bad m3u8: ' + text.substring(0, 80));
-
-  if (text.includes('#EXT-X-STREAM-INF')) {
-    for (const line of text.split('\n')) {
-      const t = line.trim();
-      if (!t || t.startsWith('#')) continue;
-      rlog('variant url: ' + t.substring(0, 120));
-      const varRes  = await fetch(t);
-      const varText = await varRes.text();
-      rlog('variant ' + varRes.status + ': ' + varText.substring(0, 200).replace(/\n/g, '|'));
-      if (!varRes.ok || !varText.startsWith('#EXTM3U')) throw new Error('bad variant: ' + varText.substring(0, 80));
-      const blob = new Blob([varText], { type: 'application/vnd.apple.mpegurl' });
-      return URL.createObjectURL(blob);
-    }
-    throw new Error('no variant in master');
-  }
-
-  rlog('media playlist: ' + text.substring(0, 300).replace(/\n/g, '|'));
-  const blob = new Blob([text], { type: 'application/vnd.apple.mpegurl' });
-  return URL.createObjectURL(blob);
-}
 
 // ── Screen switcher ───────────────────────────────────────────────────────────
 function showScreen(name) {
@@ -757,9 +730,7 @@ document.getElementById('player-title').textContent = '...';
       return;
     }
 
-    if (state.currentBlobUrl) { URL.revokeObjectURL(state.currentBlobUrl); state.currentBlobUrl = null; }
     state.currentVideoId = videoId;
-    state.currentBlobUrl = stream.url.startsWith('blob:') ? stream.url : null;
     document.getElementById('player-title').textContent = stream.title || videoId;
     startPlayback(stream.url);
     showOverlay();
@@ -809,7 +780,6 @@ function startPlayback(url) {
 function stopPlayback() {
   const video = document.getElementById('video');
   if (video) { video.src = ''; video.ontimeupdate = null; video.onended = null; }
-  if (state.currentBlobUrl) { URL.revokeObjectURL(state.currentBlobUrl); state.currentBlobUrl = null; }
   clearTimeout(state.overlayTimer);
 }
 
