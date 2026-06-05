@@ -19,6 +19,16 @@ async function handleRequest(request) {
   }
 
   const reqUrl = new URL(request.url);
+
+  // /app — serve latest app.js directly so index.html bypasses TizenBrew's file cache
+  if (reqUrl.pathname === '/app') {
+    const r = await fetch('https://raw.githubusercontent.com/nghiadhd-2702/TizenAnime2/main/app/app.js');
+    const text = await r.text();
+    return new Response(text, {
+      status: r.status,
+      headers: { ...corsHeaders(), 'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache' },
+    });
+  }
   const { searchParams } = reqUrl;
   const target  = searchParams.get('url');
   const referer = searchParams.get('ref') || '';

@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.20';
+const VERSION   = '1.0.21';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://corsproxy.io/?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
