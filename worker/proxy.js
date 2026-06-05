@@ -60,9 +60,12 @@ async function handleRequest(request) {
   const contentType = upstream.headers.get('Content-Type') || 'application/octet-stream';
 
   if (!rewrite) {
+    // Segments disguised as images (e.g. .png filenames): force video/mp2t so
+    // Tizen's media pipeline doesn't try to decode them as image data.
+    const outType = /^image\//i.test(contentType) ? 'video/mp2t' : contentType;
     return new Response(upstream.body, {
       status: upstream.status,
-      headers: { ...corsHeaders(), 'Content-Type': contentType },
+      headers: { ...corsHeaders(), 'Content-Type': outType },
     });
   }
 
@@ -79,9 +82,13 @@ async function handleRequest(request) {
   const workerBase = reqUrl.origin + '/?';
   const encodedRef = encodeURIComponent(referer || origin + '/');
 
+  let seenFirstSegment = false;
   const rewritten = text.split('\n').map(line => {
     const t = line.trim();
     if (!t) return line;
+    // Drop leading #EXT-X-DISCONTINUITY (before first segment) — Tizen rejects it
+    if (t === '#EXT-X-DISCONTINUITY' && !seenFirstSegment) return '';
+    if (t.startsWith('#EXTINF')) seenFirstSegment = true;
     // Rewrite URI="..." inside tags that reference external resources
     if (t.startsWith('#EXT-X-KEY') || t.startsWith('#EXT-X-MAP') || t.startsWith('#EXT-X-MEDIA')) {
       return t.replace(/URI="([^"]+)"/, (_, uri) => {
