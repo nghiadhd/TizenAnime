@@ -94,7 +94,9 @@ async function handleRequest(request) {
   const target  = searchParams.get('url');
   const referer = searchParams.get('ref') || '';
   const raw     = searchParams.get('raw') === '1';
-  const passKey = searchParams.get('key') || '';   // AES-GCM key forwarded from app
+  const passKey  = searchParams.get('key')  || '';  // primary key (hD)
+  const passKey2 = searchParams.get('key2') || '';  // fallback key (kX)
+  const passKeyT = searchParams.get('keyT') || '';  // fallback key (first 16 bytes of t)
   const rewrite = !raw && (searchParams.get('rewrite') === '1' || /\.m3u8(\?|$)/i.test(target || ''));
 
   if (!target) {
@@ -177,26 +179,40 @@ async function handleRequest(request) {
     if (t.startsWith('#')) { outLines.push(line); continue; }
 
     // Segment line
-    if (encMode && passKey && encIv && !t.startsWith('http')) {
-      // Segment line is base64 AES-GCM ciphertext — decrypt to get real CDN URL
-      try {
-        const cipher    = base64ToBytes(t.replace(/\s/g, ''));
-        const keyBytes  = hexToBytes(passKey);
-        const ivBytes   = hexToBytes(encIv);
-        const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
-        const plain     = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, cryptoKey, cipher);
-        const realUrl   = new TextDecoder().decode(plain).trim();
-        console.log('[m3u8] decrypted seg URL:', realUrl.substring(0, 80));
-        // Inject EXTINF if missing, then segment proxy URL
-        if (!outLines.some(l => l.startsWith('#EXTINF'))) {
+    if (encMode && encIv && !t.startsWith('http')) {
+      // Segment line is base64 AES-GCM ciphertext — try keys until one works
+      const keysToTry = [passKey, passKey2, passKeyT].filter(k => k && k.length >= 32);
+      const cipher = base64ToBytes(t.replace(/\s/g, ''));
+      const ivBytes = hexToBytes(encIv);
+      let plain = null;
+      for (const k of keysToTry) {
+        try {
+          const keyBytes  = hexToBytes(k.substring(0, 32)); // take 16 bytes
+          const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+          plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, cryptoKey, cipher);
+          console.log('[m3u8] decrypt OK with key:', k.substring(0, 8) + '...');
+          break;
+        } catch (e) {
+          console.log('[m3u8] key failed:', k.substring(0, 8), e.message.substring(0, 40));
+        }
+      }
+      if (plain) {
+        const decrypted = new TextDecoder().decode(plain);
+        console.log('[m3u8] decrypted content:', decrypted.substring(0, 150));
+        // Add required HLS headers if not present
+        if (!outLines.some(l => l.startsWith('#EXT-X-TARGETDURATION'))) {
           outLines.push('#EXT-X-TARGETDURATION:10');
           outLines.push('#EXT-X-MEDIA-SEQUENCE:0');
         }
-        outLines.push('#EXTINF:10.0,');
-        outLines.push(workerOrigin + '/s/seg' + segIndex + '.ts?url=' + encodeURIComponent(realUrl) + '&ref=' + encodedRef);
-        segIndex++;
-      } catch (e) {
-        console.log('[m3u8] decrypt error:', e.message);
+        // Decrypted content is likely a list of CDN URLs, one per line
+        for (const segLine of decrypted.split('\n')) {
+          const s = segLine.trim();
+          if (!s) continue;
+          outLines.push('#EXTINF:10.0,');
+          const sfname = (s.split('/').pop().split('?')[0].replace(/\.[^.]+$/, '') || 'seg' + segIndex);
+          outLines.push(workerOrigin + '/s/' + sfname + '.ts?url=' + encodeURIComponent(s) + '&ref=' + encodedRef);
+          segIndex++;
+        }
       }
       continue;
     }

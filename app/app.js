@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.25';
+const VERSION   = '1.0.26';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://tizenanime-proxy.nghiadhd.workers.dev/fetch?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
@@ -303,11 +303,22 @@ async function fetchStream(slug, ep) {
     const m3u8Url = `https://${embedHost}/${outerJson.sUb}.m3u8`;
     rlog('m3u8 url: ' + m3u8Url);
 
+    // Decode sUb to get inner h and t values
+    let innerH = '', innerT = '';
+    try {
+      const inner = JSON.parse(atob(outerJson.sUb.replace(/-/g, '+').replace(/_/g, '/')));
+      innerH = inner.h || '';
+      innerT = inner.t || '';
+    } catch (_) {}
+    rlog('innerH: ' + innerH + ' innerT: ' + innerT.substring(0, 20));
+
     const streamUrl = HLS_PROXY
       + '?url=' + encodeURIComponent(m3u8Url)
       + '&ref=' + encodeURIComponent(embedUrl)
       + '&rewrite=1'
-      + (outerJson.kX ? '&key=' + outerJson.kX : '');
+      + '&key=' + (outerJson.hD || outerJson.kX || '')
+      + '&key2=' + (outerJson.kX || '')
+      + '&keyT=' + innerT.substring(0, 32);  // first 16 bytes of t
     rlog('stream url: ' + streamUrl.substring(0, 100));
     return { url: streamUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
   }
