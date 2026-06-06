@@ -147,42 +147,85 @@ async function handleRequest(request) {
   const encodedRef = encodeURIComponent(referer || origin + '/');
   const workerOrigin = reqUrl.origin;
 
-  // Extract AES-GCM IV from #ENC-AESGCM tag if present
+  // Detect custom AES-GCM encrypted format: #ENC-AESGCM;iv=HEX
   let encIv = '';
+  let encMode = false;
   for (const line of text.split('\n')) {
     const m = line.trim().match(/^#ENC-AESGCM;iv=([0-9a-f]+)/i);
-    if (m) { encIv = m[1]; break; }
+    if (m) { encIv = m[1]; encMode = true; break; }
   }
-  const keyParam = passKey && encIv ? '&key=' + passKey + '&iv=' + encIv : '';
 
+  const lines = text.split('\n');
+  const outLines = [];
   let seenFirstSegment = false;
-  const rewritten = text.split('\n').map(line => {
+  let segIndex = 0;
+
+  for (const line of lines) {
     const t = line.trim();
-    if (!t) return line;
-    if (t === '#EXT-X-DISCONTINUITY' && !seenFirstSegment) return '';
+    if (!t) { outLines.push(''); continue; }
+    if (t === '#EXT-X-DISCONTINUITY' && !seenFirstSegment) { outLines.push(''); continue; }
     if (t.startsWith('#EXTINF')) seenFirstSegment = true;
-    // Strip non-standard encryption tags so Tizen accepts the playlist
-    if (t.startsWith('#ENC-') || t.startsWith('#EXT-X-B65')) return '';
+    // Strip non-standard tags
+    if (t.startsWith('#ENC-') || t.startsWith('#EXT-X-B65')) { outLines.push(''); continue; }
     if (t.startsWith('#EXT-X-KEY') || t.startsWith('#EXT-X-MAP') || t.startsWith('#EXT-X-MEDIA')) {
-      return t.replace(/URI="([^"]+)"/, (_, uri) => {
+      outLines.push(t.replace(/URI="([^"]+)"/, (_, uri) => {
         const abs = uri.startsWith('http') ? uri : baseUrl + uri;
         return 'URI="' + workerOrigin + '/?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef + '"';
-      });
+      }));
+      continue;
     }
-    if (t.startsWith('#')) return line;
+    if (t.startsWith('#')) { outLines.push(line); continue; }
+
+    // Segment line
+    if (encMode && passKey && encIv && !t.startsWith('http')) {
+      // Segment line is base64 AES-GCM ciphertext — decrypt to get real CDN URL
+      try {
+        const cipher    = base64ToBytes(t.replace(/\s/g, ''));
+        const keyBytes  = hexToBytes(passKey);
+        const ivBytes   = hexToBytes(encIv);
+        const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+        const plain     = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, cryptoKey, cipher);
+        const realUrl   = new TextDecoder().decode(plain).trim();
+        console.log('[m3u8] decrypted seg URL:', realUrl.substring(0, 80));
+        // Inject EXTINF if missing, then segment proxy URL
+        if (!outLines.some(l => l.startsWith('#EXTINF'))) {
+          outLines.push('#EXT-X-TARGETDURATION:10');
+          outLines.push('#EXT-X-MEDIA-SEQUENCE:0');
+        }
+        outLines.push('#EXTINF:10.0,');
+        outLines.push(workerOrigin + '/s/seg' + segIndex + '.ts?url=' + encodeURIComponent(realUrl) + '&ref=' + encodedRef);
+        segIndex++;
+      } catch (e) {
+        console.log('[m3u8] decrypt error:', e.message);
+      }
+      continue;
+    }
+
     const abs = t.startsWith('http') ? t : baseUrl + t;
     if (/\.m3u8(\?|$)/i.test(abs)) {
-      return workerOrigin + '/?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef + '&rewrite=1' + (passKey ? '&key=' + passKey : '');
+      outLines.push(workerOrigin + '/?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef + '&rewrite=1' + (passKey ? '&key=' + passKey : ''));
+      continue;
     }
-    // Route segments through /s/NAME.ts so Tizen's HLS parser accepts the .ts extension
+    outLines.push('#EXTINF:10.0,');
     const fname = (abs.split('/').pop().split('?')[0].replace(/\.[^.]+$/, '') || 'seg');
-    return workerOrigin + '/s/' + fname + '.ts?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef + keyParam;
-  }).join('\n');
+    outLines.push(workerOrigin + '/s/' + fname + '.ts?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef);
+  }
+
+  if (encMode && segIndex > 0) outLines.push('#EXT-X-ENDLIST');
+
+  const rewritten = outLines.join('\n');
 
   return new Response(rewritten, {
     status: 200,
     headers: { ...corsHeaders(), 'Content-Type': 'application/vnd.apple.mpegurl' },
   });
+}
+
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
 }
 
 function hexToBytes(hex) {
