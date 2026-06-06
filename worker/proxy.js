@@ -56,12 +56,12 @@ async function handleRequest(request) {
     });
   }
 
-  // /s/*.ts — segment proxy that always returns video/mp2t
-  // Tizen's HLS parser rejects playlists with non-.ts segment URLs (e.g. .png),
-  // so we rewrite segments to this path which looks like a real .ts file.
+  // /s/*.ts — segment proxy, with optional AES-GCM decryption
   if (reqUrl.pathname.startsWith('/s/')) {
     const segTarget  = searchParams.get('url');
     const segReferer = searchParams.get('ref') || '';
+    const segKey     = searchParams.get('key') || '';  // hex AES-GCM key (kX)
+    const segIv      = searchParams.get('iv')  || '';  // hex IV from #ENC-AESGCM
     if (!segTarget) return new Response('Missing url', { status: 400, headers: corsHeaders() });
     let segOrigin = 'https://embed1.streamc.xyz';
     try { if (segReferer) segOrigin = new URL(segReferer).origin; } catch (_) {}
@@ -73,6 +73,18 @@ async function handleRequest(request) {
         'Referer':    segReferer || segOrigin + '/',
       },
     });
+    if (segKey && segIv) {
+      try {
+        const keyBytes = hexToBytes(segKey);
+        const ivBytes  = hexToBytes(segIv);
+        const cipher   = await seg.arrayBuffer();
+        const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+        const plain  = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, cryptoKey, cipher);
+        return new Response(plain, { status: 200, headers: { ...corsHeaders(), 'Content-Type': 'video/mp2t' } });
+      } catch (e) {
+        console.log('[seg] decrypt failed:', e.message);
+      }
+    }
     return new Response(seg.body, {
       status: seg.status,
       headers: { ...corsHeaders(), 'Content-Type': 'video/mp2t' },
@@ -82,6 +94,7 @@ async function handleRequest(request) {
   const target  = searchParams.get('url');
   const referer = searchParams.get('ref') || '';
   const raw     = searchParams.get('raw') === '1';
+  const passKey = searchParams.get('key') || '';   // AES-GCM key forwarded from app
   const rewrite = !raw && (searchParams.get('rewrite') === '1' || /\.m3u8(\?|$)/i.test(target || ''));
 
   if (!target) {
@@ -134,12 +147,22 @@ async function handleRequest(request) {
   const encodedRef = encodeURIComponent(referer || origin + '/');
   const workerOrigin = reqUrl.origin;
 
+  // Extract AES-GCM IV from #ENC-AESGCM tag if present
+  let encIv = '';
+  for (const line of text.split('\n')) {
+    const m = line.trim().match(/^#ENC-AESGCM;iv=([0-9a-f]+)/i);
+    if (m) { encIv = m[1]; break; }
+  }
+  const keyParam = passKey && encIv ? '&key=' + passKey + '&iv=' + encIv : '';
+
   let seenFirstSegment = false;
   const rewritten = text.split('\n').map(line => {
     const t = line.trim();
     if (!t) return line;
     if (t === '#EXT-X-DISCONTINUITY' && !seenFirstSegment) return '';
     if (t.startsWith('#EXTINF')) seenFirstSegment = true;
+    // Strip non-standard encryption tags so Tizen accepts the playlist
+    if (t.startsWith('#ENC-') || t.startsWith('#EXT-X-B65')) return '';
     if (t.startsWith('#EXT-X-KEY') || t.startsWith('#EXT-X-MAP') || t.startsWith('#EXT-X-MEDIA')) {
       return t.replace(/URI="([^"]+)"/, (_, uri) => {
         const abs = uri.startsWith('http') ? uri : baseUrl + uri;
@@ -149,17 +172,23 @@ async function handleRequest(request) {
     if (t.startsWith('#')) return line;
     const abs = t.startsWith('http') ? t : baseUrl + t;
     if (/\.m3u8(\?|$)/i.test(abs)) {
-      return workerOrigin + '/?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef + '&rewrite=1';
+      return workerOrigin + '/?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef + '&rewrite=1' + (passKey ? '&key=' + passKey : '');
     }
     // Route segments through /s/NAME.ts so Tizen's HLS parser accepts the .ts extension
     const fname = (abs.split('/').pop().split('?')[0].replace(/\.[^.]+$/, '') || 'seg');
-    return workerOrigin + '/s/' + fname + '.ts?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef;
+    return workerOrigin + '/s/' + fname + '.ts?url=' + encodeURIComponent(abs) + '&ref=' + encodedRef + keyParam;
   }).join('\n');
 
   return new Response(rewritten, {
     status: 200,
     headers: { ...corsHeaders(), 'Content-Type': 'application/vnd.apple.mpegurl' },
   });
+}
+
+function hexToBytes(hex) {
+  const arr = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < arr.length; i++) arr[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return arr;
 }
 
 function corsHeaders() {

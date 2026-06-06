@@ -4,7 +4,7 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.24';
+const VERSION   = '1.0.25';
 const BASE      = 'https://wibu47.vip';
 const CORS      = 'https://tizenanime-proxy.nghiadhd.workers.dev/fetch?url=';
 // Cloudflare Worker that forwards requests with a custom Referer header.
@@ -306,7 +306,8 @@ async function fetchStream(slug, ep) {
     const streamUrl = HLS_PROXY
       + '?url=' + encodeURIComponent(m3u8Url)
       + '&ref=' + encodeURIComponent(embedUrl)
-      + '&rewrite=1';
+      + '&rewrite=1'
+      + (outerJson.kX ? '&key=' + outerJson.kX : '');
     rlog('stream url: ' + streamUrl.substring(0, 100));
     return { url: streamUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
   }
