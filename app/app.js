@@ -296,11 +296,12 @@ async function fetchStream(slug, ep) {
     } catch (e) {
       throw new Error('data-obf base64 decode failed: ' + e.message);
     }
-    console.log('[stream] obf json keys:', Object.keys(outerJson));
+    rlog('obf keys: ' + Object.keys(outerJson).join(', '));
+    rlog('obf json: ' + JSON.stringify(outerJson).substring(0, 300));
 
     if (!outerJson.sUb) throw new Error('data-obf missing sUb; keys: ' + Object.keys(outerJson).join(', '));
     const m3u8Url = `https://${embedHost}/${outerJson.sUb}.m3u8`;
-    console.log('[stream] m3u8 url:', m3u8Url);
+    rlog('m3u8 url: ' + m3u8Url);
 
     const streamUrl = HLS_PROXY
       + '?url=' + encodeURIComponent(m3u8Url)
