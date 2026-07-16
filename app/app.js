@@ -1487,7 +1487,12 @@ function playNext() {
 function updatePlayerBar() {
   const video = document.getElementById('video');
   if (!video || !video.duration) return;
-  const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  const fmt = t => {
+    t = Math.max(0, Math.floor(t));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    const mm = h ? String(m).padStart(2, '0') : String(m);
+    return (h ? h + ':' : '') + mm + ':' + String(s).padStart(2, '0');
+  };
   const pct = (video.currentTime / video.duration) * 100;
   const timeEl       = document.getElementById('player-time');
   const seekFillEl   = document.getElementById('seek-fill');
