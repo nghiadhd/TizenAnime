@@ -47,6 +47,7 @@ const CATALOG_PATHS = {
 const CATALOGS = [
   { id: 'search',       name: 'Tìm Kiếm',    local: true },
   { id: 'continue',     name: 'Đang Xem',    local: true },
+  { id: 'favorite',     name: 'Yêu Thích',   local: true },
   { id: 'moi-nhat',     name: 'Mới Nhất' },
   { id: 'dang-chieu',   name: 'Đang Chiếu' },
   { id: 'hoan-thanh',   name: 'Hoàn Thành' },
@@ -78,6 +79,9 @@ const EP_COLS        = 6;
 const HOME_GRID_COLS = 6; // cards per row in the home grid
 const SEARCH_COLS    = 7; // more space since no sidebar
 
+const HEART_SVG = '<svg class="heart-icon" viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor">' +
+  '<path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+
 // ── Key codes (standard + Tizen remote) ──────────────────────────────────────
 const KEY = {
   UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39, ENTER: 13,
@@ -107,6 +111,7 @@ const state = {
   // Series
   series: null,
   focusEp: 0,
+  seriesZone: 'eps',   // 'fav' | 'eps'
 
   // Search
   search: { query: '', items: [], loading: false, focus: -1, _debounce: null },
@@ -413,8 +418,8 @@ function handleSearch(k) {
 
 // ── Home screen (hero + overlay sidebar + rows + category grid) ─────────────
 const HERO_SOURCE_CAT = 'moi-nhat';
-const HOME_SIDEBAR_ALL_IDS = ['home-nav-home', 'home-search-btn', 'home-nav-continue', 'home-nav-latest', 'home-nav-genre'];
-const LOCAL_BUILDERS = { continue: buildContinueWatching };
+const HOME_SIDEBAR_ALL_IDS = ['home-nav-home', 'home-search-btn', 'home-nav-continue', 'home-nav-favorite', 'home-nav-latest', 'home-nav-genre'];
+const LOCAL_BUILDERS = { continue: buildContinueWatching, favorite: buildFavorites };
 
 function showHome() {
   showScreen('home');
@@ -477,6 +482,8 @@ function getHomeSidebarIds() {
   const ids = ['home-nav-home', 'home-search-btn'];
   const continueRow = state.rows.find(r => r.catId === 'continue');
   if (continueRow && continueRow.items.length) ids.push('home-nav-continue');
+  const favRow = state.rows.find(r => r.catId === 'favorite');
+  if (favRow && favRow.items.length) ids.push('home-nav-favorite');
   ids.push('home-nav-latest', 'home-nav-genre');
   return ids;
 }
@@ -580,6 +587,8 @@ function activateHomeSidebarIcon(id) {
     showSearch();
   } else if (id === 'home-nav-continue') {
     openCategoryGrid('continue');
+  } else if (id === 'home-nav-favorite') {
+    openCategoryGrid('favorite');
   } else if (id === 'home-nav-latest') {
     openCategoryGrid('moi-nhat');
   } else if (id === 'home-nav-genre') {
@@ -1105,6 +1114,7 @@ async function showSeries(slug, autoplay = false) {
     const meta = await fetchMeta(slug);
     state.series  = meta;
     state.focusEp = 0;
+    state.seriesZone = 'eps';
     recordLocalMeta(slug, meta.name, meta.poster);
 
     const history = JSON.parse(localStorage.getItem('watchHistory') || '{}');
@@ -1145,6 +1155,7 @@ function renderSeries() {
         <div class="series-title">${escHtml(meta.name)}</div>
         <div class="series-desc">${escHtml(meta.description || '')}</div>
         ${lastEp ? `<div class="series-resume">▶ Tiếp tục từ Tập ${escHtml(lastEp)}</div>` : ''}
+        <div class="fav-btn ${state.seriesZone === 'fav' ? 'focused' : ''} ${isFavorite(slug) ? 'active' : ''}">${HEART_SVG}${isFavorite(slug) ? 'Đã Thích' : 'Yêu Thích'}</div>
         <div class="ep-section-title">Danh sách tập (${videos.length})</div>
         <div class="episodes-grid" id="episodes-grid">${epGrid}</div>
       </div>
@@ -1533,6 +1544,82 @@ function recordLocalMeta(slug, name, poster) {
   } catch (_) {}
 }
 
+// ── Favorites ─────────────────────────────────────────────────────────────────
+function getFavorites() {
+  try { return JSON.parse(localStorage.getItem('tizenanime_favorites') || '{}'); } catch (_) { return {}; }
+}
+
+function isFavorite(slug) {
+  return !!getFavorites()[slug];
+}
+
+function toggleFavorite(slug, name, poster) {
+  if (!slug) return false;
+  try {
+    const f = getFavorites();
+    if (f[slug]) {
+      delete f[slug];
+      localStorage.setItem('tizenanime_favorites', JSON.stringify(f));
+      syncLocalRow('favorite');
+      return false;
+    }
+    f[slug] = { slug, name, poster, ts: Date.now() };
+    localStorage.setItem('tizenanime_favorites', JSON.stringify(f));
+    syncLocalRow('favorite');
+    return true;
+  } catch (_) { return false; }
+}
+
+function buildFavorites() {
+  const f = getFavorites();
+  return Object.keys(f)
+    .map(slug => f[slug])
+    .filter(v => v && v.name)
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 40)
+    .map(v => ({ id: v.slug, name: v.name, poster: v.poster || '', type: 'series' }));
+}
+
+// Position a to-be-inserted local row so state.rows keeps the order buildHomeRows()
+// would have produced, by counting how many earlier CATALOGS entries have a row.
+function homeRowInsertIndex(catId) {
+  const targetIdx = CATALOGS.findIndex(c => c.id === catId);
+  let insertAt = 0;
+  for (let i = 0; i < targetIdx; i++) {
+    const c = CATALOGS[i];
+    if (c.id === 'search') continue;
+    if (state.rows.some(r => r.catId === c.id)) insertAt++;
+  }
+  return insertAt;
+}
+
+// Refresh a local (favorite / continue-watching) row in place, or create+insert it
+// if buildHomeRows() skipped it at startup (the list was empty then) but it now has
+// items. Shared by favorite add/remove so the home row updates live.
+function syncLocalRow(catId) {
+  if (!LOCAL_BUILDERS[catId]) return;
+  const items = LOCAL_BUILDERS[catId]();
+  const row = state.rows.find(r => r.catId === catId);
+  if (row) {
+    row.items = items;
+    if (row.focus > row.items.length - 1) row.focus = Math.max(0, row.items.length - 1);
+    renderHomeRow(row);
+  } else if (items.length) {
+    const cat = CATALOGS.find(c => c.id === catId);
+    if (!cat) return;
+    const insertAt = homeRowInsertIndex(catId);
+    state.rows.splice(insertAt, 0, {
+      catId: cat.id, catName: cat.name, isLocal: true, items,
+      loading: false, loaded: true, focus: 0, page: 1, hasMore: false,
+    });
+    // Inserting shifts every row's index (data-row-index / #home-row-track-N),
+    // so rowFocusIndex must be adjusted to keep pointing at the same row.
+    if (state.rowFocusIndex >= insertAt) state.rowFocusIndex++;
+    renderHomeRows();
+  }
+  renderHomeSidebar();
+}
+
 function buildContinueWatching() {
   const h = JSON.parse(localStorage.getItem('watchHistory') || '{}');
   return Object.entries(h)
@@ -1584,16 +1671,29 @@ function handleSeries(k) {
   const max    = videos.length - 1;
   const epCols = getEpGridCols();
 
-  if (k === KEY.UP)         state.focusEp = Math.max(0, state.focusEp - epCols);
-  else if (k === KEY.DOWN)  state.focusEp = Math.min(max, state.focusEp + epCols);
-  else if (k === KEY.LEFT)  state.focusEp = Math.max(0, state.focusEp - 1);
-  else if (k === KEY.RIGHT) state.focusEp = Math.min(max, state.focusEp + 1);
-  else if (k === KEY.ENTER) { playEpisode(state.focusEp); return true; }
-  else if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
+  if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
     if (state.prevScreen === 'search') showSearch(false);
     else showHome();
     return true;
   }
+
+  if (state.seriesZone === 'fav') {
+    if (k === KEY.DOWN) { state.seriesZone = 'eps'; state.focusEp = 0; }
+    else if (k === KEY.ENTER) {
+      toggleFavorite(state.series.id, state.series.name, state.series.poster);
+    } else { return false; }
+    renderSeries();
+    return true;
+  }
+
+  if (k === KEY.UP) {
+    if (Math.floor(state.focusEp / epCols) === 0) state.seriesZone = 'fav';
+    else state.focusEp = Math.max(0, state.focusEp - epCols);
+  }
+  else if (k === KEY.DOWN)  state.focusEp = Math.min(max, state.focusEp + epCols);
+  else if (k === KEY.LEFT)  state.focusEp = Math.max(0, state.focusEp - 1);
+  else if (k === KEY.RIGHT) state.focusEp = Math.min(max, state.focusEp + 1);
+  else if (k === KEY.ENTER) { playEpisode(state.focusEp); return true; }
   else return false;
 
   renderSeries();
