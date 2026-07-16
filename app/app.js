@@ -312,7 +312,9 @@ function showSearch(reset = true) {
 }
 
 async function fetchSearch(query) {
-  const url = `${BASE}/?s=${encodeURIComponent(query)}`;
+  // The `_` cache-buster stops the Tizen webview from serving a stale cached
+  // response — without it, different queries could return the last result set.
+  const url = `${BASE}/?s=${encodeURIComponent(query)}&_=${Date.now()}`;
   const html = await proxyFetch(url);
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return parseCards(doc).slice(0, 42);
@@ -365,6 +367,14 @@ function renderSearch() {
 function handleSearch(k) {
   const { items, focus } = state.search;
 
+  // Backspace must only edit the query text, never act as a "back" key. Let it
+  // through when the input is focused (return false → the field deletes a char);
+  // otherwise swallow it (return true → preventDefault) so the browser/webview
+  // doesn't navigate back on macOS.
+  if (k === KEY.BACKSPACE) {
+    return document.activeElement !== document.getElementById('search-input');
+  }
+
   if (focus === -1) {
     if (k === KEY.DOWN && items.length) {
       state.search.focus = 0;
@@ -403,7 +413,7 @@ function handleSearch(k) {
     const item = items[focus];
     if (item) { state.prevScreen = 'search'; showSeries(item.id); }
     return true;
-  } else if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
+  } else if (k === KEY.BACK || k === KEY.ESC) {
     state.search.focus = -1;
     document.getElementById('search-input').focus();
     renderSearch();
@@ -1225,7 +1235,7 @@ async function playEpisode(epIdx) {
       showPlayerError('Không tìm thấy stream để phát trực tiếp.');
       return;
     }
-    startPlayback(stream.url, 0);
+    startPlayback(stream.url, resumeTimeFor(slug, ep));
   } catch (e) {
     console.error('[stream] error:', e);
     showPlayerError('Lỗi: ' + e.message);
@@ -1397,9 +1407,20 @@ function startPlayback(url, resumeTime) {
       try { video.currentTime = resumeTime; } catch (_) {}
     }
   };
-  video.onwaiting = () => showBuffering(true);
-  video.onplaying = () => { showBuffering(false); hidePlayerError(); };
-  video.oncanplay = () => showBuffering(false);
+  // Stall watchdog: a long seek into an unbuffered region can leave hls.js
+  // buffering forever. If we're still waiting after 10s (and not paused), force
+  // a reload from the current position. onseeked clears a stuck overlay too.
+  clearTimeout(state.stallTimer);
+  video.onwaiting = () => {
+    showBuffering(true);
+    clearTimeout(state.stallTimer);
+    state.stallTimer = setTimeout(() => {
+      if (state.hls && !video.paused) { rlog('stall watchdog: reload at ' + Math.floor(video.currentTime)); try { state.hls.startLoad(); } catch (_) {} }
+    }, 10000);
+  };
+  video.onplaying = () => { showBuffering(false); hidePlayerError(); clearTimeout(state.stallTimer); };
+  video.oncanplay = () => { showBuffering(false); clearTimeout(state.stallTimer); };
+  video.onseeked  = () => showBuffering(false);
   video.onerror = () => {
     const code = video.error?.code;
     const msg  = video.error?.message || '';
@@ -1477,11 +1498,14 @@ function applyBufferLevelLive(level) {
 }
 
 function stopPlayback() {
+  saveProgress(true);
+  clearTimeout(state.stallTimer);
   const video = document.getElementById('video');
   if (video) {
     video.src = '';
     video.ontimeupdate = null; video.onended = null; video.onloadedmetadata = null;
     video.onwaiting = null; video.onplaying = null; video.oncanplay = null; video.onerror = null;
+    video.onseeked = null;
   }
   if (state.hls) { state.hls.destroy(); state.hls = null; }
   showBuffering(false);
@@ -1511,6 +1535,7 @@ function updatePlayerBar() {
   if (timeEl)       timeEl.textContent   = `${fmt(video.currentTime)} / ${fmt(video.duration)}`;
   if (seekFillEl)   seekFillEl.style.width  = pct + '%';
   if (seekHandleEl) seekHandleEl.style.left = pct + '%';
+  saveProgress();
 }
 
 function showOverlay() {
@@ -1534,6 +1559,34 @@ function recordLocalWatch(slug, ep) {
     h[slug] = { ...h[slug], ep, ts: Date.now() };
     localStorage.setItem('watchHistory', JSON.stringify(h));
   } catch (_) {}
+}
+
+// Persist playback position so an episode resumes where it was left off. Called
+// throttled from updatePlayerBar (ontimeupdate fires ~4x/s) and forced on stop.
+let _lastProgressSave = 0;
+function saveProgress(force) {
+  const video = document.getElementById('video');
+  if (!video || !state.currentVideoId || !video.duration) return;
+  const now = Date.now();
+  if (!force && now - _lastProgressSave < 5000) return;
+  _lastProgressSave = now;
+  const [slug, ep] = state.currentVideoId.split(':');
+  try {
+    const h = JSON.parse(localStorage.getItem('watchHistory') || '{}');
+    h[slug] = { ...h[slug], ep, time: video.currentTime, duration: video.duration, ts: now };
+    localStorage.setItem('watchHistory', JSON.stringify(h));
+  } catch (_) {}
+}
+
+// The saved position to resume from for a given episode, or 0 if none/near-start
+// or already finished (within 10s of the end).
+function resumeTimeFor(slug, ep) {
+  try {
+    const rec = JSON.parse(localStorage.getItem('watchHistory') || '{}')[slug];
+    if (rec && String(rec.ep) === String(ep) && rec.time > 5
+        && (!rec.duration || rec.duration - rec.time > 10)) return rec.time;
+  } catch (_) {}
+  return 0;
 }
 
 function recordLocalMeta(slug, name, poster) {
