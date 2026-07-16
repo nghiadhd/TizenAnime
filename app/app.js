@@ -4,88 +4,74 @@
 if (new URLSearchParams(location.search).get('sim') === 'tizen') window.tizen = window.tizen || {};
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const VERSION   = '1.0.26';
-const BASE      = 'https://wibu47.vip';
-const CORS      = 'https://tizenanime-proxy.nghiadhd.workers.dev/fetch?url=';
-// Cloudflare Worker that forwards requests with a custom Referer header.
-// See worker/proxy.js — deploy it and paste your workers.dev URL here.
-const HLS_PROXY = 'https://tizenanime-proxy.nghiadhd.workers.dev/';
+const VERSION   = '1.0.0';
+const BASE      = 'https://animevsub.app';
+// Dedicated Worker for animevsub.app — separate from TizenPhim's worker and
+// from the old tizenanime-proxy (which served the now-retired wibu47.vip source).
+// See worker/proxy-avs.js — deploy it and paste your workers.dev URL here.
+const CORS      = 'https://tizenanime-avs-proxy.nghiadhd.workers.dev/fetch?url=';
+const HLS_PROXY = 'https://tizenanime-avs-proxy.nghiadhd.workers.dev/hls?url=';
 
 // ── Catalog list ──────────────────────────────────────────────────────────────
+// animevsub.app serves both listing feeds and genres as top-level slugs
+// (/all/, /action/, ...). A few of the app's catalog ids differ from the
+// site slug, so keep the mapping explicit rather than deriving `/${id}/`.
 const CATALOG_PATHS = {
-  'moi-nhat':   '/',
-  'anime':      '/the-loai/anime',
-  'hanh-dong':  '/the-loai/hanh-dong',
-  'hai-huoc':   '/the-loai/hai-huoc',
-  'tinh-cam':   '/the-loai/tinh-cam',
-  'harem':      '/the-loai/harem',
-  'bi-an':      '/the-loai/bi-an',
-  'bi-kich':    '/the-loai/bi-kich',
-  'gia-tuong':  '/the-loai/gia-tuong',
-  'doi-thuong': '/the-loai/doi-thuong',
-  'phieu-luu':  '/the-loai/phieu-luu',
-  'sieu-nhien': '/the-loai/sieu-nhien',
-  'sieu-nang-luc': '/the-loai/sieu-nang-luc',
-  'hoc-duong':  '/the-loai/hoc-duong',
-  'vo-thuat':   '/the-loai/vo-thuat',
-  'tro-choi':   '/the-loai/tro-choi',
-  'tham-tu':    '/the-loai/tham-tu',
-  'lich-su':    '/the-loai/lich-su',
-  'shounen':    '/the-loai/shounen',
-  'am-nhac':    '/the-loai/am-nhac',
-  'mecha':      '/the-loai/mecha',
-  'quan-doi':   '/the-loai/quan-doi',
-  'drama':      '/the-loai/drama',
-  'psychological': '/the-loai/psychological',
-  'seinen':     '/the-loai/seinen',
-  'shoujo':     '/the-loai/shoujo',
-  'the-thao':   '/the-loai/the-thao',
-  'kinh-di':    '/the-loai/kinh-di',
-  'vien-tuong': '/the-loai/vien-tuong',
-  'ecchi':      '/the-loai/ecchi',
-  'demon':      '/the-loai/demon',
-  'khoa-huyen': '/the-loai/khoa-huyen',
-  '2025':       '/season/2025',
-  '2024':       '/season/2024',
+  'moi-nhat':      '/all/',
+  'dang-chieu':    '/anime-dang-chieu/',
+  'hoan-thanh':    '/anime-tron-bo/',
+  'phim-le':       '/anime-le/',
+  'action':        '/action/',
+  'adventure':     '/adventure/',
+  'comedy':        '/comedy/',
+  'co-trang':      '/co-trang/',
+  'dementia':      '/dementia/',
+  'demons':        '/demons/',
+  'drama':         '/drama/',
+  'ecchi':         '/ecchi/',
+  'fantasy':       '/fantasy/',
+  'game':          '/game/',
+  'harem':         '/harem/',
+  'historical':    '/historical/',
+  'horror':        '/horror/',
+  'josei':         '/josei/',
+  'kids':          '/kids/',
+  'live-action':   '/live-action/',
+  'mecha':         '/mecha/',
+  'mystery':       '/mystery/',
+  'romance':       '/romance/',
+  'school':        '/school/',
+  'supernatural':  '/supernatural/',
 };
 
 const CATALOGS = [
-  { id: 'search',    name: 'Tìm Kiếm',    local: true },
-  { id: 'continue',   name: 'Đang Xem',    local: true },
-  { id: 'moi-nhat',   name: 'Mới Nhất' },
-  { id: '2025',       name: 'Năm 2025' },
-  { id: '2024',       name: 'Năm 2024' },
-  { id: 'anime',      name: 'Anime' },
-  { id: 'hanh-dong',  name: 'Hành Động' },
-  { id: 'hai-huoc',   name: 'Hài Hước' },
-  { id: 'tinh-cam',   name: 'Tình Cảm' },
-  { id: 'harem',      name: 'Harem' },
-  { id: 'bi-an',      name: 'Bí Ẩn' },
-  { id: 'bi-kich',    name: 'Bi Kịch' },
-  { id: 'gia-tuong',  name: 'Giả Tưởng' },
-  { id: 'doi-thuong', name: 'Đời Thường' },
-  { id: 'phieu-luu',  name: 'Phiêu Lưu' },
-  { id: 'sieu-nhien', name: 'Siêu Nhiên' },
-  { id: 'sieu-nang-luc', name: 'Siêu Năng Lực' },
-  { id: 'hoc-duong',  name: 'Học Đường' },
-  { id: 'vo-thuat',   name: 'Võ Thuật' },
-  { id: 'tro-choi',   name: 'Trò Chơi' },
-  { id: 'tham-tu',    name: 'Thám Tử' },
-  { id: 'lich-su',    name: 'Lịch Sử' },
-  { id: 'shounen',    name: 'Shounen' },
-  { id: 'shoujo',     name: 'Shoujo' },
-  { id: 'seinen',     name: 'Seinen' },
-  { id: 'the-thao',   name: 'Thể Thao' },
-  { id: 'am-nhac',    name: 'Âm Nhạc' },
-  { id: 'mecha',      name: 'Mecha' },
-  { id: 'quan-doi',   name: 'Quân Đội' },
-  { id: 'drama',      name: 'Drama' },
-  { id: 'psychological', name: 'Psychological' },
-  { id: 'kinh-di',    name: 'Kinh Dị' },
-  { id: 'vien-tuong', name: 'Viễn Tưởng' },
-  { id: 'ecchi',      name: 'Ecchi' },
-  { id: 'demon',      name: 'Demon' },
-  { id: 'khoa-huyen', name: 'Khoa Huyễn' },
+  { id: 'search',       name: 'Tìm Kiếm',    local: true },
+  { id: 'continue',     name: 'Đang Xem',    local: true },
+  { id: 'moi-nhat',     name: 'Mới Nhất' },
+  { id: 'dang-chieu',   name: 'Đang Chiếu' },
+  { id: 'hoan-thanh',   name: 'Hoàn Thành' },
+  { id: 'phim-le',      name: 'Phim Lẻ' },
+  { id: 'action',       name: 'Action' },
+  { id: 'adventure',    name: 'Adventure' },
+  { id: 'comedy',       name: 'Comedy' },
+  { id: 'co-trang',     name: 'Cổ Trang' },
+  { id: 'dementia',     name: 'Dementia' },
+  { id: 'demons',       name: 'Demons' },
+  { id: 'drama',        name: 'Drama' },
+  { id: 'ecchi',        name: 'Ecchi' },
+  { id: 'fantasy',      name: 'Fantasy' },
+  { id: 'game',         name: 'Game' },
+  { id: 'harem',        name: 'Harem' },
+  { id: 'historical',   name: 'Historical' },
+  { id: 'horror',       name: 'Horror' },
+  { id: 'josei',        name: 'Josei' },
+  { id: 'kids',         name: 'Kids' },
+  { id: 'live-action',  name: 'Live Action' },
+  { id: 'mecha',        name: 'Mecha' },
+  { id: 'mystery',      name: 'Mystery' },
+  { id: 'romance',      name: 'Romance' },
+  { id: 'school',       name: 'School' },
+  { id: 'supernatural', name: 'Supernatural' },
 ];
 
 const EP_COLS        = 6;
@@ -105,12 +91,17 @@ const state = {
   screen: 'home',
   prevScreen: 'home',
 
-  // Home — sidebar + grid
-  homeZone: 'sidebar',   // 'sidebar' | 'grid'
-  sidebarFocus: 1,       // index into CATALOGS (0 = search, 1 = Đang Xem)
-  grid: {
+  // Home — hero + overlay sidebar + rows + category grid
+  hero: { item: null, meta: null, loading: false, zone: 'play' },
+  homeRowZone: 'hero',      // 'sidebar' | 'hero' | 'row' | 'grid'
+  homeSidebarFocus: 0,
+  rows: [],
+  rowFocusIndex: 0,
+  homeMode: 'rows',         // 'rows' | 'category'
+  catGrid: {
     catId: null, catName: '',
-    items: [], page: 1, hasMore: false, loading: false, focus: 0,
+    items: [], page: 1, hasMore: false, loading: false, loadingMore: false, focus: 0,
+    heroItem: null,
   },
 
   // Series
@@ -123,20 +114,17 @@ const state = {
   // Player
   overlayTimer: null,
   currentVideoId: null,
+  currentEpIdx: -1,
+  currentStreamUrl: null,
+  hls: null,
+  playerZone: 'controls',        // 'seek' | 'controls'
+  playerControlIndex: 1,
+  playerSettingsOpen: false,
+  playerSettingsFocus: 0,
 };
-
-// ── Viewport scaling (FHD / 4K / desktop) ────────────────────────────────────
-// App is authored at 1920×1080. Scale body to fill the screen while keeping
-// the 16:9 coordinate space intact (letterbox/pillarbox if aspect differs).
-function scaleToViewport() {
-  const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-  document.body.style.transform = `translate(-50%, -50%) scale(${scale})`;
-}
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  scaleToViewport();
-  window.addEventListener('resize', scaleToViewport);
   registerTizenKeys();
   document.addEventListener('keydown', onKey);
   document.getElementById('btn-close-about').addEventListener('click', () => showHome());
@@ -154,8 +142,6 @@ async function startApp() {
   showScreen('loading');
   const vEl = document.querySelector('.loading-version');
   if (vEl) vEl.textContent = 'v' + VERSION;
-  const sidebarVer = document.getElementById('sidebar-version');
-  if (sidebarVer) sidebarVer.textContent = 'v' + VERSION;
   const aboutVer = document.getElementById('about-version');
   if (aboutVer) aboutVer.textContent = 'v' + VERSION;
 
@@ -193,20 +179,22 @@ async function proxyFetch(url) {
 }
 
 // ── HTML parsing ──────────────────────────────────────────────────────────────
+// A film's slug is the first path segment of its top-level URL (https://host/<slug>/).
+function slugFromHref(href) {
+  return (href || '').replace(/^https?:\/\/[^/]+/, '').match(/^\/([^/?#]+)/)?.[1];
+}
+
 function parseCards(doc) {
   const items = [], seen = new Set();
-  doc.querySelectorAll('a[href*="/phim/"]').forEach(el => {
-    const href = el.getAttribute('href') || '';
-    if (href.includes('/xem-phim/')) return;
-    const slug = href.match(/\/phim\/([^/?#]+)/)?.[1];
+  doc.querySelectorAll('.movie-item').forEach(card => {
+    const link = card.querySelector('a.movie-link') || card.querySelector('.movie-title a');
+    const slug = slugFromHref(link?.getAttribute('href'));
     if (!slug || seen.has(slug)) return;
     seen.add(slug);
-    const card = el.closest('article, li') || el.parentElement || el;
-    const nameEl = card.querySelector('h2,h3,h4,[class*="title"],[class*="name"]');
-    const name = nameEl?.textContent?.trim() || el.getAttribute('title') || el.textContent.trim() || '';
+    const name = (card.querySelector('.movie-title')?.textContent || '').trim();
     if (!name || name.length < 2) return;
     const img = card.querySelector('img');
-    let poster = img?.getAttribute('data-src') || img?.getAttribute('src') || '';
+    let poster = img?.getAttribute('src') || img?.getAttribute('data-src') || '';
     if (poster && !poster.startsWith('http')) poster = BASE + poster;
     items.push({ id: slug, name, poster, type: 'series' });
   });
@@ -217,114 +205,64 @@ function parseCards(doc) {
 async function fetchCatalog(id, page = 1) {
   const path = CATALOG_PATHS[id];
   if (!path) return [];
-  const url = `${BASE}${path}${page > 1 ? `?page=${page}` : ''}`;
+  const url = `${BASE}${path}${page > 1 ? `page/${page}/` : ''}`;
   const html = await proxyFetch(url);
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return parseCards(doc).slice(0, 24);
 }
 
 async function fetchMeta(slug) {
-  const html = await proxyFetch(`${BASE}/phim/${slug}`);
+  const html = await proxyFetch(`${BASE}/${slug}/`);
   const doc  = new DOMParser().parseFromString(html, 'text/html');
 
-  let name = '';
-  try {
-    const ld = doc.querySelector('script[type="application/ld+json"]')?.textContent;
-    if (ld) name = JSON.parse(ld).name || '';
-  } catch {}
-  if (!name) name = doc.querySelector('h1')?.textContent?.trim() || slug;
+  const rawTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content')?.trim()
+    || doc.querySelector('h1')?.textContent?.trim() || slug;
+  // og:title is "<Name> Vietsub | Animevsub" — strip the site suffix.
+  const name = rawTitle.replace(/\s*\|\s*Animevsub.*$/i, '').replace(/\s+Vietsub\s*$/i, '').trim() || slug;
 
-  const poster      = (doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || '').replace(/^http:/, 'https:');
+  const poster      = doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || '';
   const description = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || '';
 
-  const epIds = new Set();
-  doc.querySelectorAll('a[href*="/xem-phim/"]').forEach(el => {
-    const m = el.getAttribute('href')?.match(/\/xem-phim\/[^/]+\/([^/?#]+)$/);
-    if (m) epIds.add(m[1]);
+  const videos = [], seenEp = new Set();
+  doc.querySelectorAll('.episodes-grid a.episode-item, a.episode-item').forEach(el => {
+    const href  = el.getAttribute('href') || '';
+    const epId  = href.match(/tap-(\d+)/)?.[1]
+      || (el.querySelector('.episode-number')?.textContent || '').match(/\d+/)?.[0];
+    if (!epId || seenEp.has(epId)) return;
+    seenEp.add(epId);
+    videos.push({ id: `${slug}:${epId}`, title: `Tập ${epId}`, episode: Number(epId) || 0 });
   });
-
-  try {
-    const wh  = await proxyFetch(`${BASE}/xem-phim/${slug}/1`);
-    const wd  = new DOMParser().parseFromString(wh, 'text/html');
-    wd.querySelectorAll('a[href*="/xem-phim/"]').forEach(el => {
-      const m = el.getAttribute('href')?.match(/\/xem-phim\/[^/]+\/([^/?#]+)$/);
-      if (m) epIds.add(m[1]);
-    });
-  } catch (_) {}
-
-  const now        = Date.now();
-  const numericEps = [...epIds].filter(e => /^\d+$/.test(e)).map(Number).sort((a, b) => a - b);
-  const otherEps   = [...epIds].filter(e => !/^\d+$/.test(e)).sort();
-  const videos     = [];
-  const maxNumeric = numericEps.length ? numericEps[numericEps.length - 1] : 0;
-  numericEps.forEach(ep => videos.push({
-    id: `${slug}:${ep}`, title: `Tập ${ep}`, episode: ep,
-    released: new Date(now - (maxNumeric - ep) * 86400000).toISOString(),
-  }));
-  otherEps.forEach((epId, i) => videos.push({
-    id: `${slug}:${epId}`, title: epId, episode: numericEps.length + i + 1,
-    released: new Date(now - (maxNumeric + i + 1) * 86400000).toISOString(),
-  }));
-  if (!videos.length) videos.push({ id: `${slug}:1`, title: 'Tập 1', episode: 1, released: new Date(now).toISOString() });
+  videos.sort((a, b) => a.episode - b.episode);
+  if (!videos.length) videos.push({ id: `${slug}:1`, title: 'Tập 1', episode: 1 });
 
   return { id: slug, name, poster, description, videos };
 }
 
 async function fetchStream(slug, ep) {
-  const watchUrl = `${BASE}/xem-phim/${slug}/${ep}`;
+  const watchUrl = `${BASE}/${slug}/tap-${ep}/`;
   console.log('[stream] watch url:', watchUrl);
 
   const html = await proxyFetch(watchUrl);
   console.log('[stream] watch page length:', html.length);
 
-  const vproMatch = html.match(/var\s+VPRO\s*=\s*["'](https?:\/\/(embed\d+\.streamc\.xyz)\/embed\.php\?hash=([^"']+))["']/);
-  console.log('[stream] VPRO match:', vproMatch ? vproMatch[1] : 'NONE — no VPRO variable found in page');
-
-  if (vproMatch) {
-    const [, embedUrl, embedHost] = vproMatch;
-    console.log('[stream] fetching embed:', embedUrl);
-    const embedHtml = await proxyFetch(embedUrl);
-    console.log('[stream] embed page length:', embedHtml.length);
-
-    const obfMatch = embedHtml.match(/data-obf="([^"]+)"/);
-    console.log('[stream] data-obf found:', !!obfMatch);
-    if (!obfMatch) throw new Error('no data-obf attribute in embed page');
-
-    let outerJson;
-    try {
-      outerJson = JSON.parse(atob(obfMatch[1].replace(/-/g, '+').replace(/_/g, '/')));
-    } catch (e) {
-      throw new Error('data-obf base64 decode failed: ' + e.message);
-    }
-    rlog('obf keys: ' + Object.keys(outerJson).join(', '));
-    rlog('obf json: ' + JSON.stringify(outerJson).substring(0, 300));
-
-    if (!outerJson.sUb) throw new Error('data-obf missing sUb; keys: ' + Object.keys(outerJson).join(', '));
-    const m3u8Url = `https://${embedHost}/${outerJson.sUb}.m3u8`;
-    rlog('m3u8 url: ' + m3u8Url);
-
-    // Decode sUb to get inner h and t values
-    let innerH = '', innerT = '';
-    try {
-      const inner = JSON.parse(atob(outerJson.sUb.replace(/-/g, '+').replace(/_/g, '/')));
-      innerH = inner.h || '';
-      innerT = inner.t || '';
-    } catch (_) {}
-    rlog('innerH: ' + innerH + ' innerT: ' + innerT.substring(0, 20));
-
-    const streamUrl = HLS_PROXY
-      + '?url=' + encodeURIComponent(m3u8Url)
-      + '&ref=' + encodeURIComponent(embedUrl)
-      + '&rewrite=1'
-      + '&key=' + (outerJson.hD || outerJson.kX || '')
-      + '&key2=' + (outerJson.kX || '')
-      + '&keyT=' + innerT.substring(0, 32);  // first 16 bytes of t
-    rlog('stream url: ' + streamUrl.substring(0, 100));
-    return { url: streamUrl, name: 'Wibu47', title: `Tập ${ep} · HLS` };
+  // The watch page runs ArtPlayer + HLS.js and embeds its sources in a plain
+  // inline array: `var all_sources = [ "https://.../index.m3u8" ];` (empty on
+  // titles with no stream yet). Pull the first .m3u8 out of that array.
+  const sourcesMatch = html.match(/all_sources\s*=\s*\[([\s\S]*?)\]/);
+  const scope   = sourcesMatch ? sourcesMatch[1] : html;
+  const m3u8Url = scope.match(/https?:\/\/[^"'\s\\]+\.m3u8[^"'\s\\]*/)?.[0];
+  if (!m3u8Url) {
+    console.log('[stream] no m3u8 found on watch page (empty or missing)');
+    return { externalUrl: watchUrl, name: 'AnimeVsub', title: `Tập ${ep}` };
   }
+  rlog('m3u8 url: ' + m3u8Url);
 
-  console.log('[stream] no VPRO — falling back to external url');
-  return { externalUrl: watchUrl, name: 'Wibu47', title: `Tập ${ep}` };
+  // Play the manifest directly — do NOT route it through the /hls worker. The
+  // kkphimplayer* CDN sends permissive CORS (works from HLS.js cross-origin) and
+  // its master playlist references sub-playlists/segments by *relative* path, so
+  // proxying the manifest would break their resolution. The worker also can't
+  // fetch this CDN anyway (it 404s Cloudflare Worker egress).
+  return { url: m3u8Url, name: 'AnimeVsub', title: `Tập ${ep} · HLS` };
 }
 
 
@@ -359,7 +297,7 @@ function showSearch(reset = true) {
 }
 
 async function fetchSearch(query) {
-  const url = `${BASE}/tim-kiem/?keyword=${encodeURIComponent(query)}`;
+  const url = `${BASE}/?s=${encodeURIComponent(query)}`;
   const html = await proxyFetch(url);
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return parseCards(doc).slice(0, 42);
@@ -419,7 +357,10 @@ function handleSearch(k) {
       renderSearch();
       return true;
     }
-    if (k === KEY.BACK || k === KEY.ESC) { showHome(); return true; }
+    // LEFT is the reliable escape here — on real Tizen hardware the physical
+    // Back button can be swallowed by the platform (keyboard-dismiss handling)
+    // while a native <input> has focus, so BACK/ESC alone isn't dependable.
+    if (k === KEY.BACK || k === KEY.ESC || k === KEY.LEFT) { showHome(); return true; }
     return false;
   }
 
@@ -438,7 +379,7 @@ function handleSearch(k) {
   } else if (k === KEY.DOWN) {
     state.search.focus = Math.min(max, focus + SEARCH_COLS);
   } else if (k === KEY.LEFT) {
-    if (col === 0) return false;
+    if (col === 0) { showHome(); return true; }
     state.search.focus--;
   } else if (k === KEY.RIGHT) {
     if (focus >= max) return false;
@@ -460,210 +401,693 @@ function handleSearch(k) {
   return true;
 }
 
-// ── Home screen ───────────────────────────────────────────────────────────────
-let _sidebarDebounce = null;
+// ── Home screen (hero + overlay sidebar + rows + category grid) ─────────────
+const HERO_SOURCE_CAT = 'moi-nhat';
+const HOME_SIDEBAR_ALL_IDS = ['home-nav-home', 'home-search-btn', 'home-nav-continue', 'home-nav-latest', 'home-nav-genre'];
+const LOCAL_BUILDERS = { continue: buildContinueWatching };
 
 function showHome() {
   showScreen('home');
-  if (!state.grid.catId) loadHomeGrid(CATALOGS[state.sidebarFocus]);
-  else renderHome();
+  if (!state.rows.length) {
+    state.rows = buildHomeRows();
+    renderHomeRows();
+  }
+  if (!state.hero.item && !state.hero.loading) loadHomeHero();
+  renderHomeScreen();
 }
 
-function renderHome() {
-  const home = document.getElementById('screen-home');
-  if (home) home.classList.toggle('sidebar-collapsed', state.homeZone === 'grid');
-  renderSidebar();
-  renderHomeGrid();
+async function loadHomeHero() {
+  state.hero.loading = true;
+  renderHomeScreen();
+  try {
+    const items = await fetchCatalog(HERO_SOURCE_CAT, 1);
+    state.hero.item = items[0] || null;
+    // The HERO_SOURCE_CAT row is pre-marked loading:true (not queued through
+    // ensureRowLoaded) specifically so this same fetch can resolve it too,
+    // instead of firing a redundant second request for identical data.
+    const heroRow = state.rows.find(r => r.catId === HERO_SOURCE_CAT);
+    if (heroRow && !heroRow.loaded) {
+      heroRow.items   = items;
+      heroRow.loading = false;
+      heroRow.loaded  = true;
+      heroRow.hasMore = items.length >= 12;
+      renderHomeRow(heroRow);
+    }
+    if (state.hero.item) {
+      try { state.hero.meta = await fetchMeta(state.hero.item.id); } catch (_) { state.hero.meta = null; }
+    }
+  } catch (_) {}
+  state.hero.loading = false;
+  renderHomeScreen();
 }
 
-function renderHomeGrid() {
-  const { catName, items, loading, page, hasMore } = state.grid;
-  const maxFocus = items.length + (hasMore ? 1 : 0) - 1;
-  if (maxFocus >= 0 && state.grid.focus > maxFocus) state.grid.focus = maxFocus;
-  let focus = state.grid.focus;
-  if (focus < 0) focus = 0;
-  document.getElementById('home-cat-name').textContent  = catName || '';
-  document.getElementById('home-page-info').textContent = hasMore || page > 1 ? `Trang ${page}` : '';
+function getDisplayedHeroItem() {
+  if (state.homeMode === 'category') {
+    const g = state.catGrid;
+    if (state.homeRowZone === 'grid' && g.items[g.focus]) {
+      // Sticks so that jumping back to hero (BACK / UP-at-top) keeps showing
+      // whatever card was last focused, instead of resetting to items[0].
+      g.heroItem = g.items[g.focus];
+    }
+    return g.heroItem || g.items[0] || null;
+  }
+  if (state.homeRowZone === 'row') {
+    const row = state.rows[state.rowFocusIndex];
+    if (row && row.loaded && row.items[row.focus]) {
+      // Same stickiness for rows mode: keep the last-hovered row item as the
+      // hero content once focus moves away from the row, so Play/Info act on
+      // the film the user was actually looking at.
+      state.hero.item = row.items[row.focus];
+    }
+  }
+  return state.hero.item;
+}
 
-  const el = document.getElementById('home-grid');
-  const loadingOverlay = document.getElementById('home-loading');
+function getHomeSidebarIds() {
+  const ids = ['home-nav-home', 'home-search-btn'];
+  const continueRow = state.rows.find(r => r.catId === 'continue');
+  if (continueRow && continueRow.items.length) ids.push('home-nav-continue');
+  ids.push('home-nav-latest', 'home-nav-genre');
+  return ids;
+}
 
-  if (!state.grid.catId && !loading) {
-    loadingOverlay?.classList.add('hidden');
-    el.innerHTML = '<div class="grid-hint">← Chọn thể loại</div>';
+function renderHomeSidebar() {
+  const ids = getHomeSidebarIds();
+  HOME_SIDEBAR_ALL_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('hidden', ids.indexOf(id) === -1);
+    el.classList.remove('focused');
+  });
+  const sidebarEl = document.getElementById('home-sidebar');
+  if (sidebarEl) sidebarEl.classList.toggle('expanded', state.homeRowZone === 'sidebar');
+  if (state.homeRowZone === 'sidebar') {
+    const activeId = ids[state.homeSidebarFocus];
+    const el = activeId && document.getElementById(activeId);
+    if (el) el.classList.add('focused');
+  }
+}
+
+function updateHomeSectionVisibility() {
+  const rowsEl = document.getElementById('home-rows');
+  const gridEl = document.getElementById('home-catgrid');
+  const isCategory = state.homeMode === 'category';
+  if (rowsEl) rowsEl.classList.toggle('hidden', isCategory);
+  if (gridEl) gridEl.classList.toggle('hidden', !isCategory);
+}
+
+function renderHomeScreen() {
+  renderHomeSidebar();
+  updateHomeSectionVisibility();
+
+  const item      = getDisplayedHeroItem();
+  const backdrop  = document.getElementById('home-hero-backdrop');
+  const title     = document.getElementById('home-hero-title');
+  const desc      = document.getElementById('home-hero-desc');
+  const playBtn   = document.getElementById('home-hero-play');
+  const infoBtn   = document.getElementById('home-hero-info');
+  const loadingEl = document.getElementById('home-hero-loading');
+
+  const heroLoading = state.homeMode === 'category'
+    ? (state.catGrid.loading && !state.catGrid.items.length)
+    : state.hero.loading;
+  if (loadingEl) loadingEl.classList.toggle('hidden', !heroLoading);
+
+  if (item) {
+    if (backdrop) backdrop.style.backgroundImage = `url('${escHtml(item.poster || '')}')`;
+    if (title) title.textContent = item.name || '';
+    // Only the global featured item has a fetched description (state.hero.meta) —
+    // row/grid-focused cards don't carry one without an extra fetch per keypress.
+    if (desc) desc.textContent = (item === state.hero.item && state.hero.meta?.description) || '';
+  } else {
+    if (backdrop) backdrop.style.backgroundImage = '';
+    if (title) title.textContent = '';
+    if (desc) desc.textContent = '';
+  }
+
+  if (playBtn) playBtn.classList.toggle('focused', state.homeRowZone === 'hero' && state.hero.zone === 'play');
+  if (infoBtn) infoBtn.classList.toggle('focused', state.homeRowZone === 'hero' && state.hero.zone === 'info');
+}
+
+function handleHomeScreen(k) {
+  // BACK steps back one level at a time within a category page: from the grid it
+  // jumps to that page's own hero first (handled in handleHomeCategoryGridKey);
+  // only pressing BACK again once already at the hero exits the category page.
+  if ((k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) && state.homeMode === 'category' && state.homeRowZone === 'hero') {
+    exitCategoryGrid();
+    return true;
+  }
+  if (state.homeRowZone === 'sidebar') return handleHomeSidebarKey(k);
+  if (state.homeRowZone === 'hero')    return handleHomeHeroKey(k);
+  if (state.homeRowZone === 'grid')    return handleHomeCategoryGridKey(k);
+  return handleHomeRowKey(k);
+}
+
+function handleHomeSidebarKey(k) {
+  const ids = getHomeSidebarIds();
+  if (k === KEY.RIGHT) {
+    state.homeRowZone = 'hero';
+  } else if (k === KEY.UP) {
+    state.homeSidebarFocus = Math.max(0, state.homeSidebarFocus - 1);
+  } else if (k === KEY.DOWN) {
+    state.homeSidebarFocus = Math.min(ids.length - 1, state.homeSidebarFocus + 1);
+  } else if (k === KEY.ENTER) {
+    activateHomeSidebarIcon(ids[state.homeSidebarFocus]);
+    return true;
+  } else { return false; }
+  renderHomeScreen();
+  return true;
+}
+
+function activateHomeSidebarIcon(id) {
+  if (id === 'home-nav-home') {
+    state.homeMode = 'rows';
+    const scrollEl = document.getElementById('home-scroll');
+    if (scrollEl) scrollEl.scrollTo({ top: 0, behavior: 'smooth' });
+    state.homeRowZone = 'hero';
+    renderHomeScreen();
+  } else if (id === 'home-search-btn') {
+    showSearch();
+  } else if (id === 'home-nav-continue') {
+    openCategoryGrid('continue');
+  } else if (id === 'home-nav-latest') {
+    openCategoryGrid('moi-nhat');
+  } else if (id === 'home-nav-genre') {
+    openCategoryGrid('action');
+  }
+}
+
+function handleHomeHeroKey(k) {
+  if (k === KEY.RIGHT) {
+    state.hero.zone = 'info';
+  } else if (k === KEY.LEFT) {
+    if (state.hero.zone === 'info') { state.hero.zone = 'play'; }
+    else { state.homeRowZone = 'sidebar'; }
+  } else if (k === KEY.UP) {
+    state.homeRowZone = 'sidebar';
+  } else if (k === KEY.DOWN) {
+    if (state.homeMode === 'category') {
+      if (!state.catGrid.items.length) return false;
+      state.homeRowZone = 'grid';
+      renderHomeScreen();
+      renderCategoryGrid();
+      return true;
+    }
+    if (!state.rows.length) return false;
+    enterHomeRowZone(0);
+    return true;
+  } else if (k === KEY.ENTER) {
+    const item = getDisplayedHeroItem();
+    if (!item) return true;
+    state.prevScreen = 'home';
+    showSeries(item.id, state.hero.zone === 'play');
+    return true;
+  } else { return false; }
+  renderHomeScreen();
+  return true;
+}
+
+function handleHomeRowKey(k) {
+  const i   = state.rowFocusIndex;
+  const row = state.rows[i];
+  if (!row) return false;
+
+  if (k === KEY.UP) {
+    if (i === 0) {
+      state.homeRowZone = 'hero';
+      updateHomeRowShellFocus(i);
+      updateHomeRowCardFocus(i, null, false);
+      renderHomeScreen();
+    } else {
+      moveHomeRowFocus(i - 1);
+    }
+    return true;
+  }
+  if (k === KEY.DOWN) {
+    if (i >= state.rows.length - 1) return false;
+    moveHomeRowFocus(i + 1);
+    return true;
+  }
+  if (k === KEY.LEFT) {
+    if (!row.loaded || row.focus <= 0) {
+      state.homeRowZone = 'sidebar';
+      updateHomeRowShellFocus(i);
+      updateHomeRowCardFocus(i, null, false);
+      renderHomeScreen();
+      return true;
+    }
+    const oldFocus = row.focus;
+    row.focus--;
+    updateGridFocus(document.getElementById(`home-row-track-${i}`), oldFocus, row.focus, true);
+    renderHomeScreen();
+    return true;
+  }
+  if (k === KEY.RIGHT) {
+    if (!row.loaded) return false;
+    const maxFocus = row.items.length - 1 + (row.hasMore ? 1 : 0);
+    if (row.focus >= maxFocus) return false;
+    const oldFocus = row.focus;
+    row.focus++;
+    updateGridFocus(document.getElementById(`home-row-track-${i}`), oldFocus, row.focus, true);
+    renderHomeScreen();
+    return true;
+  }
+  if (k === KEY.ENTER) {
+    if (!row.loaded) return true;
+    if (row.hasMore && row.focus === row.items.length) { loadMoreHomeRow(row); return true; }
+    const item = row.items[row.focus];
+    if (item) { state.prevScreen = 'home'; showSeries(item.id); }
+    return true;
+  }
+  if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
+    // Quick jump to the hero from any row depth — the hero is already always
+    // visible (sticky), so this is purely a focus move, no scrolling involved.
+    state.homeRowZone = 'hero';
+    updateHomeRowShellFocus(i);
+    updateHomeRowCardFocus(i, null, false);
+    renderHomeScreen();
+    return true;
+  }
+  return false;
+}
+
+function enterHomeRowZone(index) {
+  state.homeRowZone   = 'row';
+  state.rowFocusIndex = index;
+  ensureRowLoaded(state.rows[index]);
+  renderHomeScreen();
+  updateHomeRowShellFocus(index);
+  updateHomeRowCardFocus(null, index, true);
+  scrollHomeRowIntoView(index);
+}
+
+function moveHomeRowFocus(newIndex) {
+  const oldIndex = state.rowFocusIndex;
+  state.rowFocusIndex = newIndex;
+  ensureRowLoaded(state.rows[newIndex]);
+  updateHomeRowShellFocus(oldIndex);
+  updateHomeRowShellFocus(newIndex);
+  updateHomeRowCardFocus(oldIndex, newIndex, true);
+  renderHomeScreen();
+  scrollHomeRowIntoView(newIndex);
+}
+
+function updateHomeRowShellFocus(i) {
+  const shellEl = document.querySelector(`.home-row[data-row-index="${i}"]`);
+  if (shellEl) shellEl.classList.toggle('focused', state.homeRowZone === 'row' && state.rowFocusIndex === i);
+}
+
+// Row-aware wrapper around the updateGridFocus pattern: updateGridFocus itself only
+// handles a single container, but moving focus between rows means blurring a card in
+// one row's track and focusing a card in a *different* row's track. Pass null for
+// either side when there's nothing to blur/focus on that side (e.g. entering/leaving
+// row zone entirely).
+function updateHomeRowCardFocus(oldRowIndex, newRowIndex, marquee) {
+  if (oldRowIndex != null) {
+    const oldRow = state.rows[oldRowIndex];
+    if (oldRow && oldRow.loaded) {
+      const oldTrack = document.getElementById(`home-row-track-${oldRowIndex}`);
+      const oldCard  = oldTrack && oldTrack.children[oldRow.focus];
+      if (oldCard) { oldCard.classList.remove('focused'); stopCardMarquee(oldCard); }
+    }
+  }
+  if (newRowIndex != null) {
+    const newRow = state.rows[newRowIndex];
+    if (newRow && newRow.loaded) {
+      const newTrack = document.getElementById(`home-row-track-${newRowIndex}`);
+      const newCard  = newTrack && newTrack.children[newRow.focus];
+      if (newCard) {
+        newCard.classList.add('focused');
+        requestAnimationFrame(() => {
+          newCard.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          if (marquee) marqueeTitle(newCard);
+        });
+      }
+    }
+  }
+}
+
+function scrollHomeRowIntoView(i) {
+  const shellEl = document.querySelector(`.home-row[data-row-index="${i}"]`);
+  if (shellEl) requestAnimationFrame(() => shellEl.scrollIntoView({ block: 'nearest' }));
+}
+
+function buildHomeRows() {
+  const rows = [];
+  CATALOGS.forEach(cat => {
+    if (cat.id === 'search') return;
+    if (LOCAL_BUILDERS[cat.id]) {
+      const items = LOCAL_BUILDERS[cat.id]();
+      if (!items.length) return;
+      rows.push({ catId: cat.id, catName: cat.name, isLocal: true, items, loading: false, loaded: true, focus: 0, page: 1, hasMore: false });
+    } else {
+      const isHeroSource = cat.id === HERO_SOURCE_CAT;
+      rows.push({ catId: cat.id, catName: cat.name, isLocal: false, items: [], loading: isHeroSource, loaded: false, focus: 0, page: 1, hasMore: false });
+    }
+  });
+  return rows;
+}
+
+function renderHomeRows() {
+  const el = document.getElementById('home-rows');
+  if (!el) return;
+  el.innerHTML = state.rows.map((row, i) => `
+    <div class="home-row" data-row-index="${i}">
+      <div class="home-row-title">${escHtml(row.catName)}</div>
+      <div class="home-row-track" id="home-row-track-${i}"></div>
+    </div>`).join('');
+  state.rows.forEach((row, i) => renderHomeRowTrack(row, i));
+  observeHomeRows();
+}
+
+function renderHomeRow(row) {
+  const i = state.rows.indexOf(row);
+  if (i === -1) return;
+  renderHomeRowTrack(row, i);
+  if (row.loaded && _homeRowObserver) {
+    const el = document.querySelector(`.home-row[data-row-index="${i}"]`);
+    if (el) _homeRowObserver.unobserve(el);
+  }
+  if (state.homeRowZone === 'row' && state.rowFocusIndex === i) renderHomeScreen();
+}
+
+function renderHomeRowTrack(row, i) {
+  const track = document.getElementById(`home-row-track-${i}`);
+  if (!track) return;
+  const isFocusedRow = state.homeRowZone === 'row' && state.rowFocusIndex === i;
+
+  if (!row.loaded) {
+    track.innerHTML = new Array(6).fill(0).map(() =>
+      '<div class="card"><div class="card-poster loading-card"></div><div class="card-title">&nbsp;</div></div>'
+    ).join('');
     return;
   }
-  if (loading && !items.length) {
-    loadingOverlay?.classList.remove('hidden');
-    el.innerHTML = '';
-    return;
-  }
-  loadingOverlay?.classList.add('hidden');
 
-  const inGrid = state.homeZone === 'grid';
-  const cardsHtml = items.map((item, i) =>
-    `<div class="card ${inGrid && i === focus ? 'focused' : ''}">
-      <div class="card-poster" style="background-image:url('${escHtml(item.poster || '')}')"></div>
-      <div class="card-title">${escHtml(item.name)}</div>
-    </div>`
-  ).join('');
+  const cardsHtml = row.items.map((m, ci) => `
+    <div class="card ${isFocusedRow && ci === row.focus ? 'focused' : ''}">
+      <div class="card-poster" style="background-image:url('${escHtml(m.poster || '')}')"></div>
+      <div class="card-title">${escHtml(m.name)}</div>
+    </div>`).join('');
 
-  const loadMoreIdx = items.length;
-  const loadMoreHtml = hasMore
-    ? `<div class="card card-load-more ${inGrid && loadMoreIdx === focus ? 'focused' : ''}">
-      <div class="card-load-more-icon">+</div>
-      <div class="card-title">Tải thêm</div>
-    </div>`
+  const loadMoreIdx  = row.items.length;
+  const loadMoreHtml = row.hasMore
+    ? `<div class="card card-load-more ${isFocusedRow && loadMoreIdx === row.focus ? 'focused' : ''}">
+        <div class="card-load-more-icon">${row.loadingMore ? '…' : '+'}</div>
+        <div class="card-title">Tải thêm</div>
+      </div>`
     : '';
 
-  el.innerHTML = cardsHtml + loadMoreHtml + (loading ? '<div class="grid-loading"><div class="spinner" style="width:48px;height:48px;border-width:5px"></div></div>' : '');
+  track.innerHTML = cardsHtml + loadMoreHtml;
 
-  requestAnimationFrame(() => {
-    const fc = el.querySelector('.card.focused');
-    if (fc) fc.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (isFocusedRow) {
+    requestAnimationFrame(() => {
+      const fc = track.querySelector('.card.focused');
+      if (fc) { fc.scrollIntoView({ block: 'nearest', inline: 'nearest' }); marqueeTitle(fc); }
+    });
+  }
+}
+
+let _homeRowObserver = null;
+let _activeRowFetches = 0;
+const MAX_CONCURRENT_ROW_FETCHES = 3;
+let _pendingRowFetches = [];
+
+function ensureRowLoaded(row) {
+  if (!row || row.loaded || row.loading) return;
+  row.loading = true;
+  _pendingRowFetches.push(row);
+  _drainRowFetchQueue();
+}
+
+function _drainRowFetchQueue() {
+  while (_activeRowFetches < MAX_CONCURRENT_ROW_FETCHES && _pendingRowFetches.length) {
+    const row = _pendingRowFetches.shift();
+    _activeRowFetches++;
+    fetchCatalog(row.catId, 1)
+      .then(items => { row.items = items; row.hasMore = items.length >= 12; })
+      .catch(() => { row.items = []; row.hasMore = false; })
+      .then(() => {
+        row.loading = false;
+        row.loaded  = true;
+        _activeRowFetches--;
+        renderHomeRow(row);
+        _drainRowFetchQueue();
+      });
+  }
+}
+
+async function loadMoreHomeRow(row) {
+  if (row.isLocal || !row.hasMore || row.loadingMore) return;
+  row.loadingMore = true;
+  const i = state.rows.indexOf(row);
+  renderHomeRowTrack(row, i);
+  try {
+    const more = await fetchCatalog(row.catId, row.page + 1);
+    row.items   = row.items.concat(more);
+    row.page++;
+    row.hasMore = more.length >= 12;
+  } catch (_) {
+    row.hasMore = false;
+  }
+  row.loadingMore = false;
+  renderHomeRowTrack(row, i);
+}
+
+function observeHomeRows() {
+  if (_homeRowObserver) { _homeRowObserver.disconnect(); }
+  if (!window.IntersectionObserver) {
+    state.rows.forEach(row => ensureRowLoaded(row));
+    return;
+  }
+  const root = document.getElementById('home-scroll');
+  _homeRowObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const idx = Number(entry.target.getAttribute('data-row-index'));
+      const row = state.rows[idx];
+      if (row) ensureRowLoaded(row);
+    });
+  }, { root, rootMargin: '0px 0px 900px 0px' });
+
+  document.querySelectorAll('.home-row').forEach(el => {
+    const idx = Number(el.getAttribute('data-row-index'));
+    const row = state.rows[idx];
+    if (row && !row.loaded) _homeRowObserver.observe(el);
   });
 }
 
-async function loadHomeGrid(cat) {
-  if (cat.id === 'search') return;
-  state.grid = { catId: cat.id, catName: cat.name, items: [], page: 1, hasMore: false, loading: true, focus: 0 };
-  renderHome();
-  try {
-    const items = cat.local ? buildContinueWatching() : await fetchCatalog(cat.id, 1);
-    state.grid.items   = items;
-    state.grid.hasMore = !cat.local && items.length >= 24;
-  } catch (_) {}
-  state.grid.loading = false;
-  renderHome();
+// ── Home screen — category grid pages ────────────────────────────────────────
+function openCategoryGrid(catId) {
+  const cat = CATALOGS.find(c => c.id === catId);
+  if (!cat) return;
+  state.homeMode    = 'category';
+  state.homeRowZone = 'hero';
+  state.catGrid = {
+    catId: cat.id, catName: cat.name,
+    items: [], page: 1, hasMore: false, loading: true, loadingMore: false, focus: 0,
+    heroItem: null,
+  };
+  const scrollEl = document.getElementById('home-scroll');
+  if (scrollEl) scrollEl.scrollTo({ top: 0 });
+  renderHomeScreen();
+  renderCategoryGrid();
+  loadCategoryGrid();
 }
 
-async function loadMoreHomeGrid() {
-  if (state.grid.loading || !state.grid.hasMore) return;
-  state.grid.loading = true;
-  state.grid.page++;
-  renderHomeGrid();
-  try {
-    const more = await fetchCatalog(state.grid.catId, state.grid.page);
-    state.grid.items   = [...state.grid.items, ...more];
-    state.grid.hasMore = more.length >= 24;
-    if (!state.grid.hasMore && state.grid.focus > state.grid.items.length - 1)
-      state.grid.focus = Math.max(0, state.grid.items.length - 1);
-  } catch (_) {}
-  state.grid.loading = false;
-  renderHome();
+function exitCategoryGrid() {
+  state.homeMode    = 'rows';
+  state.homeRowZone = 'hero';
+  renderHomeScreen();
 }
 
-function handleHome(k) {
-  return state.homeZone === 'sidebar' ? handleSidebarKey(k) : handleGridKey(k);
-}
-
-// Sidebar: cycle through catalog list
-function handleSidebarKey(k) {
-  const n    = CATALOGS.length;
-  if (k === KEY.UP) {
-    state.sidebarFocus = state.sidebarFocus === 0 ? n - 1 : state.sidebarFocus - 1;
-    _scheduleSidebarLoad();
-    renderSidebar();
-  } else if (k === KEY.DOWN) {
-    state.sidebarFocus = state.sidebarFocus >= n - 1 ? 0 : state.sidebarFocus + 1;
-    _scheduleSidebarLoad();
-    renderSidebar();
-  } else if (k === KEY.ENTER || k === KEY.RIGHT) {
-    clearTimeout(_sidebarDebounce);
-    const cat = CATALOGS[state.sidebarFocus];
-    if (cat.id === 'search') { showSearch(); return true; }
-    if (cat.id !== state.grid.catId) loadHomeGrid(cat);
-    if (k === KEY.RIGHT) { state.homeZone = 'grid'; state.grid.focus = 0; renderHome(); }
-    return true;
-  } else { return false; }
-  return true;
-}
-
-function renderSidebar() {
-  const list = document.getElementById('sidebar-list');
-  list.innerHTML = CATALOGS.map((cat, i) => {
-    const focused = state.homeZone === 'sidebar' && i === state.sidebarFocus;
-    const active  = cat.id === state.grid.catId;
-    return `<li class="sidebar-item${focused ? ' focused' : ''}${active ? ' active' : ''}">${escHtml(cat.name)}</li>`;
-  }).join('');
-  const fi = list.querySelector('.sidebar-item.focused');
-  if (fi) fi.scrollIntoView({ block: 'nearest' });
-}
-
-function _scheduleSidebarLoad() {
-  clearTimeout(_sidebarDebounce);
-  const cat = CATALOGS[state.sidebarFocus];
-  if (!cat || cat.id === 'search') return;
-  _sidebarDebounce = setTimeout(() => {
-    if (cat.id !== state.grid.catId) loadHomeGrid(cat);
-  }, 350);
-}
-
-function getHomeGridCols() {
-  const cards = document.querySelectorAll('#home-grid .card');
-  if (!cards.length) return HOME_GRID_COLS;
-  const firstTop = cards[0].offsetTop;
-  let cols = 0;
-  for (const card of cards) {
-    if (card.offsetTop !== firstTop) break;
-    cols++;
+async function loadCategoryGrid() {
+  const g = state.catGrid;
+  if (LOCAL_BUILDERS[g.catId]) {
+    g.items   = LOCAL_BUILDERS[g.catId]();
+    g.hasMore = false;
+    g.loading = false;
+    renderHomeScreen();
+    renderCategoryGrid();
+    return;
   }
-  return cols || HOME_GRID_COLS;
+  try {
+    const items = await fetchCatalog(g.catId, g.page);
+    g.items   = g.items.concat(items);
+    g.hasMore = items.length >= 12;
+  } catch (_) {}
+  g.loading = false;
+  renderHomeScreen();
+  renderCategoryGrid();
 }
 
-function handleGridKey(k) {
-  const { items, focus, hasMore, loading } = state.grid;
-  const itemCount = items.length;
-  const totalCount = itemCount + (hasMore ? 1 : 0);
-  const max       = totalCount - 1;
-  if (max < 0 && k !== KEY.LEFT && k !== KEY.BACK && k !== KEY.ESC && k !== KEY.BACKSPACE)
-    return false;
+async function loadMoreCategoryGrid() {
+  const g = state.catGrid;
+  if (g.loading || g.loadingMore || !g.hasMore) return;
+  g.loadingMore = true;
+  g.page++;
+  renderCategoryGrid();
+  try {
+    const more = await fetchCatalog(g.catId, g.page);
+    g.items   = g.items.concat(more);
+    g.hasMore = more.length >= 12;
+  } catch (_) {}
+  g.loadingMore = false;
+  renderCategoryGrid();
+}
 
-  const cols      = getHomeGridCols();
-  const col       = focus % cols;
-  const row       = Math.floor(focus / cols);
-  const totalRows = Math.ceil(totalCount / cols);
+function renderCategoryGrid() {
+  const g       = state.catGrid;
+  const titleEl = document.getElementById('home-catgrid-title');
+  const gridEl  = document.getElementById('home-catgrid-items');
+  if (!gridEl) return;
+  if (titleEl) titleEl.textContent = g.catName || '';
 
-  if (k === KEY.LEFT) {
-    if (col === 0) { state.homeZone = 'sidebar'; renderHome(); return true; }
-    state.grid.focus--;
-  } else if (k === KEY.RIGHT) {
-    if (focus < max) {
-      state.grid.focus++;
-    } else if (!loading) {
-      state.grid.focus = 0;
-    }
-  } else if (k === KEY.UP) {
+  const inGrid   = state.homeRowZone === 'grid';
+  const maxFocus = g.items.length - 1 + (g.hasMore ? 1 : 0);
+  if (maxFocus >= 0 && g.focus > maxFocus) g.focus = maxFocus;
+
+  if (g.loading && !g.items.length) {
+    gridEl.innerHTML = new Array(12).fill(0).map(() =>
+      '<div class="card"><div class="card-poster loading-card"></div><div class="card-title">&nbsp;</div></div>'
+    ).join('');
+    return;
+  }
+
+  const cardsHtml = g.items.map((m, i) => `
+    <div class="card ${inGrid && i === g.focus ? 'focused' : ''}">
+      <div class="card-poster" style="background-image:url('${escHtml(m.poster || '')}')"></div>
+      <div class="card-title">${escHtml(m.name)}</div>
+    </div>`).join('');
+
+  const loadMoreIdx  = g.items.length;
+  const loadMoreHtml = g.hasMore
+    ? `<div class="card card-load-more ${inGrid && loadMoreIdx === g.focus ? 'focused' : ''}">
+        <div class="card-load-more-icon">${g.loadingMore ? '…' : '+'}</div>
+        <div class="card-title">Tải thêm</div>
+      </div>`
+    : '';
+
+  gridEl.innerHTML = cardsHtml + loadMoreHtml;
+
+  requestAnimationFrame(() => {
+    const fc = gridEl.querySelector('.card.focused');
+    if (fc) { fc.scrollIntoView({ block: 'nearest', inline: 'nearest' }); marqueeTitle(fc); }
+  });
+}
+
+function handleHomeCategoryGridKey(k) {
+  const g     = state.catGrid;
+  const items = g.items;
+  const totalCount = items.length + (g.hasMore ? 1 : 0);
+  const max   = totalCount - 1;
+  const cols  = HOME_GRID_COLS;
+  const col   = g.focus % cols;
+  const row   = Math.floor(g.focus / cols);
+
+  if (max < 0) return false;
+
+  const oldFocus = g.focus;
+  let focusOnly  = false;
+
+  if (k === KEY.UP) {
     if (row === 0) {
-      state.grid.focus = Math.min(max, (totalRows - 1) * cols + col);
-    } else {
-      state.grid.focus = Math.max(0, focus - cols);
-    }
-  } else if (k === KEY.DOWN) {
-    const next = focus + cols;
-    if (next <= max) {
-      state.grid.focus = next;
-    } else if (!loading) {
-      state.grid.focus = col <= max ? col : 0;
-    }
-  } else if (k === KEY.ENTER) {
-    if (hasMore && focus === itemCount) {
-      loadMoreHomeGrid();
+      state.homeRowZone = 'hero';
+      renderHomeScreen();
       return true;
     }
-    const item = items[focus];
-    if (item) showSeries(item.id);
+    g.focus = Math.max(0, g.focus - cols);
+    focusOnly = true;
+  } else if (k === KEY.DOWN) {
+    const next = g.focus + cols;
+    if (next > max) return false;
+    g.focus = next;
+    focusOnly = true;
+  } else if (k === KEY.LEFT) {
+    if (col === 0) {
+      state.homeRowZone = 'sidebar';
+      renderHomeScreen();
+      return true;
+    }
+    g.focus--;
+    focusOnly = true;
+  } else if (k === KEY.RIGHT) {
+    if (g.focus >= max) return false;
+    g.focus++;
+    focusOnly = true;
+  } else if (k === KEY.ENTER) {
+    if (g.hasMore && g.focus === items.length) { loadMoreCategoryGrid(); return true; }
+    const item = items[g.focus];
+    if (item) { state.prevScreen = 'home'; showSeries(item.id); }
     return true;
   } else if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
-    state.homeZone = 'sidebar';
+    // Quick jump to this category page's own hero from any grid depth — mirrors
+    // the row-list version. handleHomeScreen only exits the category page on a
+    // second BACK once already at the hero, so this doesn't skip a level.
+    state.homeRowZone = 'hero';
+    renderHomeScreen();
+    return true;
   } else { return false; }
 
-  renderHome();
+  if (focusOnly) {
+    updateGridFocus(document.getElementById('home-catgrid-items'), oldFocus, g.focus, true);
+    renderHomeScreen();
+  }
   return true;
+}
+
+// Auto-scroll (marquee) a focused card's title when it's too long to fit.
+function marqueeTitle(card) {
+  if (!card) return;
+  const title = card.querySelector('.card-title');
+  if (!title || !title.animate) return;
+  if (title.scrollWidth - title.clientWidth <= 2) return;
+  const text = title.innerHTML;
+  title.innerHTML = `<span class="card-title-scroll"><span class="cts-piece">${text}</span><span class="cts-piece" aria-hidden="true">${text}</span></span>`;
+  const scroll = title.firstChild;
+  const pieces = scroll.querySelectorAll('.cts-piece');
+  const shift  = pieces[1].offsetLeft - pieces[0].offsetLeft;
+  if (shift <= 2) return;
+  const dur = Math.max(9000, shift * 70);
+  // Fixed 2s pause before scrolling starts, regardless of title length/duration
+  // (a flat offset fraction like 0.35 would stretch the pause out on long titles).
+  const startOffset = 2000 / dur;
+  scroll.animate([
+    { transform: 'translateX(0)',        offset: 0 },
+    { transform: 'translateX(0)',        offset: startOffset },
+    { transform: `translateX(${-shift}px)`, offset: 0.85 },
+    { transform: `translateX(${-shift}px)`, offset: 1    },
+  ], { duration: dur, iterations: Infinity, easing: 'linear' });
+}
+
+function stopCardMarquee(card) {
+  const title  = card && card.querySelector('.card-title');
+  const scroll = title && title.querySelector('.card-title-scroll');
+  if (!scroll) return;
+  const piece = scroll.querySelector('.cts-piece');
+  // Collapsing back to plain text discards the animated node (and with it
+  // the running Web Animation), instead of leaving it playing forever on a
+  // card that's no longer focused.
+  title.innerHTML = piece ? piece.innerHTML : title.textContent;
+}
+
+function updateGridFocus(containerEl, oldIndex, newIndex, marquee) {
+  const cards = containerEl.children;
+  if (cards[oldIndex]) {
+    cards[oldIndex].classList.remove('focused');
+    stopCardMarquee(cards[oldIndex]);
+  }
+  const nc = cards[newIndex];
+  if (nc) {
+    nc.classList.add('focused');
+    requestAnimationFrame(() => {
+      nc.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (marquee) marqueeTitle(nc);
+    });
+  }
 }
 
 // ── Series screen ─────────────────────────────────────────────────────────────
-async function showSeries(slug) {
+async function showSeries(slug, autoplay = false) {
   showScreen('series');
   document.getElementById('series-content').innerHTML = '<div class="loading-msg"><div class="spinner"></div></div>';
 
@@ -680,6 +1104,7 @@ async function showSeries(slug) {
     }
 
     renderSeries();
+    if (autoplay && meta.videos && meta.videos[state.focusEp]) playEpisode(state.focusEp);
   } catch (e) {
     document.getElementById('series-content').innerHTML =
       `<div class="error-msg">Không tải được nội dung.<br>${escHtml(e.message)}</div>`;
@@ -722,98 +1147,344 @@ function renderSeries() {
 }
 
 // ── Player ────────────────────────────────────────────────────────────────────
-async function playEpisode(videoId) {
-  showScreen('player');
-document.getElementById('player-title').textContent = '...';
-  document.getElementById('seek-fill').style.width = '0%';
-  document.getElementById('player-time').textContent = '0:00 / 0:00';
-  showOverlayPersistent();
+const BUFFER_PRESETS = {
+  low:    { label: 'Thấp (tiết kiệm dữ liệu)', maxBufferLength: 20,  maxMaxBufferLength: 40,  maxBufferSize: 30  * 1000 * 1000, fragLoadingMaxRetry: 4,  manifestLoadingMaxRetry: 3, levelLoadingMaxRetry: 3 },
+  normal: { label: 'Bình thường',              maxBufferLength: 60,  maxMaxBufferLength: 120, maxBufferSize: 90  * 1000 * 1000, fragLoadingMaxRetry: 8,  manifestLoadingMaxRetry: 6, levelLoadingMaxRetry: 6 },
+  high:   { label: 'Cao (mạng yếu/chập chờn)',  maxBufferLength: 120, maxMaxBufferLength: 240, maxBufferSize: 180 * 1000 * 1000, fragLoadingMaxRetry: 10, manifestLoadingMaxRetry: 8, levelLoadingMaxRetry: 8 },
+};
+const BUFFER_LEVEL_ORDER = ['low', 'normal', 'high'];
 
-  const [slug, ep] = videoId.split(':');
+function getBufferLevel() {
+  try {
+    const v = localStorage.getItem('tizenanime_bufferLevel');
+    if (v && BUFFER_PRESETS[v]) return v;
+  } catch (_) {}
+  return 'normal';
+}
+
+function setBufferLevel(level) {
+  try { localStorage.setItem('tizenanime_bufferLevel', level); } catch (_) {}
+}
+
+async function playEpisode(epIdx) {
+  const videos = state.series?.videos || [];
+  const video  = videos[epIdx];
+  if (!video) return;
+
+  state.currentEpIdx   = epIdx;
+  state.focusEp         = epIdx;
+  state.currentVideoId = video.id;
+
+  const [slug, ep] = video.id.split(':');
   recordLocalWatch(slug, ep);
 
-  try {
-    console.log(`[stream] fetching ${slug} ep ${ep}`);
-    const stream = await fetchStream(slug, ep);
-    console.log(`[stream] got:`, stream);
+  showScreen('player');
+  const titleEl = document.getElementById('player-title');
+  if (titleEl) titleEl.textContent = `${state.series?.name || ''} — ${video.title}`;
+  const seekFillEl   = document.getElementById('seek-fill');
+  const seekHandleEl = document.getElementById('seek-handle');
+  const timeEl       = document.getElementById('player-time');
+  if (seekFillEl)   seekFillEl.style.width  = '0%';
+  if (seekHandleEl) seekHandleEl.style.left = '0%';
+  if (timeEl) timeEl.textContent = '0:00 / 0:00';
+  setPlayPauseIcon(true);
+  const nextEpBtn = document.getElementById('player-next-ep');
+  if (nextEpBtn) nextEpBtn.classList.toggle('hidden', epIdx >= videos.length - 1);
+  const endHintEl = document.getElementById('player-end-hint');
+  if (endHintEl) endHintEl.classList.add('hidden');
+  showBuffering(false);
+  state.playerZone         = 'controls';
+  state.playerControlIndex = 1;
+  renderPlayerFocus();
+  showOverlayPersistent();
 
+  try {
+    const stream = await fetchStream(slug, ep);
     if (!stream.url && stream.externalUrl) {
-      document.getElementById('player-title').textContent =
-        'Không tìm thấy stream để phát trực tiếp.';
+      showPlayerError('Không tìm thấy stream để phát trực tiếp.');
       return;
     }
-
-    state.currentVideoId = videoId;
-    document.getElementById('player-title').textContent = stream.title || videoId;
-    startPlayback(stream.url);
-    showOverlay();
+    startPlayback(stream.url, 0);
   } catch (e) {
     console.error('[stream] error:', e);
-    document.getElementById('player-title').textContent = `Lỗi: ${e.message}`;
+    showPlayerError('Lỗi: ' + e.message);
   }
 }
 
-function startPlayback(url) {
+function showBuffering(show) {
+  const el = document.getElementById('player-buffering');
+  if (el) el.classList.toggle('hidden', !show);
+}
+
+function showEndOfContent() {
+  showOverlayPersistent();
+  const endHintEl = document.getElementById('player-end-hint');
+  if (endHintEl) endHintEl.classList.remove('hidden');
+}
+
+function handleVideoEnded() {
+  const videos = state.series?.videos || [];
+  const next   = state.currentEpIdx + 1;
+  if (next < videos.length) playNext();
+  else showEndOfContent();
+}
+
+function setPlayPauseIcon(isPlaying) {
+  const btn = document.getElementById('player-playpause');
+  if (btn) btn.innerHTML = isPlaying ? '&#10074;&#10074;' : '&#9654;';
+}
+
+function togglePlayPause(video) {
+  if (!video) return;
+  if (video.paused) { video.play().catch(() => {}); setPlayPauseIcon(true); }
+  else { video.pause(); setPlayPauseIcon(false); }
+}
+
+function getPlayerControlIds() {
+  const ids = ['player-rew', 'player-playpause', 'player-ff', 'player-settings'];
+  const nextBtn = document.getElementById('player-next-ep');
+  if (nextBtn && !nextBtn.classList.contains('hidden')) ids.push('player-next-ep');
+  return ids;
+}
+
+function movePlayerControlFocus(delta) {
+  const ids = getPlayerControlIds();
+  const max = ids.length - 1;
+  state.playerControlIndex = Math.max(0, Math.min(max, state.playerControlIndex + delta));
+  renderPlayerFocus();
+}
+
+function activateFocusedPlayerControl(video) {
+  const ids = getPlayerControlIds();
+  const id  = ids[state.playerControlIndex];
+  if (id === 'player-rew') {
+    if (video) { video.currentTime = Math.max(0, video.currentTime - 10); updatePlayerBar(); }
+  } else if (id === 'player-playpause') {
+    togglePlayPause(video);
+  } else if (id === 'player-ff') {
+    if (video) { video.currentTime += 10; updatePlayerBar(); }
+  } else if (id === 'player-settings') {
+    openPlayerSettings();
+  } else if (id === 'player-next-ep') {
+    playNext();
+  }
+}
+
+function renderPlayerFocus() {
+  const seekBarEl = document.querySelector('.seek-bar');
+  if (seekBarEl) seekBarEl.classList.toggle('focused', state.playerZone === 'seek');
+
+  ['player-rew', 'player-playpause', 'player-ff', 'player-settings', 'player-next-ep'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('focused');
+  });
+  if (state.playerZone === 'controls') {
+    const ids = getPlayerControlIds();
+    const activeId = ids[state.playerControlIndex];
+    const el = activeId && document.getElementById(activeId);
+    if (el) el.classList.add('focused');
+  }
+}
+
+function openPlayerSettings() {
+  const idx = BUFFER_LEVEL_ORDER.indexOf(getBufferLevel());
+  state.playerSettingsFocus = idx >= 0 ? idx : 1;
+  state.playerSettingsOpen  = true;
+  renderPlayerSettings();
+}
+
+function closePlayerSettings() {
+  state.playerSettingsOpen = false;
+  const overlay = document.getElementById('player-settings-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+function renderPlayerSettings() {
+  const overlay = document.getElementById('player-settings-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  const current = getBufferLevel();
+  overlay.innerHTML = `
+    <div class="settings-box">
+      <div class="settings-title">Bộ đệm (Buffer)</div>
+      ${BUFFER_LEVEL_ORDER.map((level, i) => {
+        const preset = BUFFER_PRESETS[level];
+        return `<div class="settings-option${i === state.playerSettingsFocus ? ' focused' : ''}${level === current ? ' active' : ''}">
+          <span>${escHtml(preset.label)}</span>
+          <span class="settings-option-check">&#10003;</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function handlePlayerSettings(k) {
+  if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
+    closePlayerSettings();
+    return true;
+  }
+  if (k === KEY.UP) {
+    state.playerSettingsFocus = Math.max(0, state.playerSettingsFocus - 1);
+    renderPlayerSettings();
+    return true;
+  }
+  if (k === KEY.DOWN) {
+    state.playerSettingsFocus = Math.min(BUFFER_LEVEL_ORDER.length - 1, state.playerSettingsFocus + 1);
+    renderPlayerSettings();
+    return true;
+  }
+  if (k === KEY.ENTER) {
+    const level = BUFFER_LEVEL_ORDER[state.playerSettingsFocus];
+    if (level) applyBufferLevelLive(level);
+    closePlayerSettings();
+    return true;
+  }
+  return false;
+}
+
+const MEDIA_ERROR_LABELS = {
+  1: 'MEDIA_ERR_ABORTED (bị hủy)',
+  2: 'MEDIA_ERR_NETWORK (lỗi mạng)',
+  3: 'MEDIA_ERR_DECODE (lỗi giải mã)',
+  4: 'MEDIA_ERR_SRC_NOT_SUPPORTED (định dạng/nguồn không hỗ trợ)',
+};
+
+function showPlayerError(msg) {
+  const el = document.getElementById('player-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  console.error('[TizenAnime player]', msg);
+}
+
+function hidePlayerError() {
+  const el = document.getElementById('player-error');
+  if (el) el.classList.add('hidden');
+}
+
+function startPlayback(url, resumeTime) {
   const video = document.getElementById('video');
   if (!video) return;
 
   if (state.hls) { state.hls.destroy(); state.hls = null; }
+  state.currentStreamUrl = url;
+  hidePlayerError();
 
   video.ontimeupdate = updatePlayerBar;
-  video.onended      = () => playNext();
-
-  video.addEventListener('loadedmetadata', () => console.log('[video] loadedmetadata duration=' + video.duration), { once: true });
-  video.addEventListener('canplay',        () => console.log('[video] canplay'), { once: true });
-  video.addEventListener('playing',        () => console.log('[video] playing'), { once: true });
-  video.addEventListener('stalled',        () => console.log('[video] stalled'));
-  video.addEventListener('waiting',        () => console.log('[video] waiting'));
-  video.addEventListener('error', () => {
+  video.onended      = handleVideoEnded;
+  video.onloadedmetadata = () => {
+    if (resumeTime && resumeTime > 5 && video.duration && resumeTime < video.duration - 2) {
+      try { video.currentTime = resumeTime; } catch (_) {}
+    }
+  };
+  video.onwaiting = () => showBuffering(true);
+  video.onplaying = () => { showBuffering(false); hidePlayerError(); };
+  video.oncanplay = () => showBuffering(false);
+  video.onerror = () => {
     const code = video.error?.code;
     const msg  = video.error?.message || '';
-    console.error('[video] error code=' + code + ' msg=' + msg);
-    showOverlayPersistent();
-    const titleEl = document.getElementById('player-title');
-    titleEl.textContent = `[${code}] ${msg || '?'} — diagnosing...`;
+    showPlayerError(`Không phát được video (${MEDIA_ERROR_LABELS[code] || 'lỗi không rõ #' + code})`);
     rlog('video error code=' + code + ' msg=' + msg + ' url=' + String(url).substring(0, 80));
-    fetch(url).then(r => r.text()).then(t => {
-      const preview = t.substring(0, 300).replace(/\n/g, '|');
-      titleEl.textContent = `[${code}] ${msg} | ${preview}`;
-      rlog('video error content: ' + t.substring(0, 500).replace(/\n/g, '|'));
-    }).catch(e2 => {
-      titleEl.textContent = `[${code}] ${msg} | fetch err: ${e2.message}`;
-      rlog('video error fetch failed: ' + e2.message);
+  };
+
+  const preset = BUFFER_PRESETS[getBufferLevel()] || BUFFER_PRESETS.normal;
+
+  function attemptPlay() {
+    const p = video.play();
+    if (p && p.catch) p.catch(err => showPlayerError('Không thể tự phát: ' + (err?.message || String(err))));
+  }
+
+  // These streams' manifests carry #EXT-X-DISCONTINUITY (spliced/re-encoded
+  // segments), which native HLS decoders — Safari/AVFoundation and Tizen's AVPlay
+  // — reject outright even when canPlayType() claims support (verified on TizenPhim,
+  // the sibling app proven on the TV). hls.js's software remuxer tolerates them, so
+  // use it everywhere and never fall back to the native player. video.src is only a
+  // last resort for the (Tizen-unlikely) case where MSE/hls.js is unavailable.
+  if (window.Hls && window.Hls.isSupported()) {
+    state.hls = new window.Hls({
+      maxBufferLength: preset.maxBufferLength,
+      maxMaxBufferLength: preset.maxMaxBufferLength,
+      maxBufferSize: preset.maxBufferSize,
+      fragLoadingMaxRetry: preset.fragLoadingMaxRetry,
+      fragLoadingRetryDelay: 1000,
+      manifestLoadingMaxRetry: preset.manifestLoadingMaxRetry,
+      levelLoadingMaxRetry: preset.levelLoadingMaxRetry,
     });
-  });
-  video.src = url;
-  video.load();
-  const p = video.play();
-  if (p && p.catch) p.catch(e => console.warn('[video] play() rejected:', e.name, e.message));
+    state.hls.loadSource(url);
+    state.hls.attachMedia(video);
+    state.hls.on(window.Hls.Events.MANIFEST_PARSED, attemptPlay);
+    let mediaRecoveries = 0, netReloads = 0;
+    state.hls.on(window.Hls.Events.ERROR, (_evt, data) => {
+      if (!data || !data.fatal) return;
+      const H = window.Hls;
+      // Media errors (bufferAppendError, bufferStalledError, decode glitches) are
+      // often transient — flush and re-append within hls.js's software pipeline
+      // rather than switching to the native player (which can't handle these).
+      if (data.type === H.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 2) {
+        mediaRecoveries++;
+        rlog('hls media error, recovering #' + mediaRecoveries + ': ' + data.details);
+        state.hls.recoverMediaError();
+        return;
+      }
+      // Fatal network error after the configured retries — try one reload pass.
+      if (data.type === H.ErrorTypes.NETWORK_ERROR && netReloads < 2) {
+        netReloads++;
+        rlog('hls network error, reloading #' + netReloads + ': ' + data.details);
+        state.hls.startLoad();
+        return;
+      }
+      showPlayerError(`Lỗi phát HLS (${data.type}): ${data.details || 'không rõ'}`);
+      rlog('hls fatal error: ' + data.type + ' ' + data.details);
+    });
+  } else {
+    video.src = url;
+    video.load();
+    attemptPlay();
+  }
+  showOverlay();
+}
+
+function applyBufferLevelLive(level) {
+  setBufferLevel(level);
+  const video = document.getElementById('video');
+  if (!video || !state.hls || !state.currentStreamUrl) return;
+  const resumeAt  = video.currentTime || 0;
+  const wasPaused = video.paused;
+  startPlayback(state.currentStreamUrl, resumeAt);
+  if (wasPaused) {
+    setTimeout(() => { const v = document.getElementById('video'); if (v) { v.pause(); setPlayPauseIcon(false); } }, 300);
+  }
 }
 
 function stopPlayback() {
   const video = document.getElementById('video');
-  if (video) { video.src = ''; video.ontimeupdate = null; video.onended = null; }
+  if (video) {
+    video.src = '';
+    video.ontimeupdate = null; video.onended = null; video.onloadedmetadata = null;
+    video.onwaiting = null; video.onplaying = null; video.oncanplay = null; video.onerror = null;
+  }
+  if (state.hls) { state.hls.destroy(); state.hls = null; }
+  showBuffering(false);
+  closePlayerSettings();
   clearTimeout(state.overlayTimer);
 }
 
 function playNext() {
-  if (!state.series || !state.currentVideoId) return;
-  const videos = state.series.videos || [];
-  const idx = videos.findIndex(v => v.id === state.currentVideoId);
-  if (idx >= 0 && idx < videos.length - 1) {
-    state.focusEp = idx + 1;
-    playEpisode(videos[idx + 1].id);
-  }
+  const videos = state.series?.videos || [];
+  const next   = state.currentEpIdx + 1;
+  if (next < videos.length) playEpisode(next);
 }
 
 function updatePlayerBar() {
   const video = document.getElementById('video');
   if (!video || !video.duration) return;
-  const fmt  = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
-  const timeEl = document.getElementById('player-time');
-  const fill   = document.getElementById('seek-fill');
-  if (timeEl) timeEl.textContent = `${fmt(video.currentTime)} / ${fmt(video.duration)}`;
-  if (fill)   fill.style.width   = `${(video.currentTime / video.duration) * 100}%`;
+  const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  const pct = (video.currentTime / video.duration) * 100;
+  const timeEl       = document.getElementById('player-time');
+  const seekFillEl   = document.getElementById('seek-fill');
+  const seekHandleEl = document.getElementById('seek-handle');
+  if (timeEl)       timeEl.textContent   = `${fmt(video.currentTime)} / ${fmt(video.duration)}`;
+  if (seekFillEl)   seekFillEl.style.width  = pct + '%';
+  if (seekHandleEl) seekHandleEl.style.left = pct + '%';
 }
 
 function showOverlay() {
@@ -825,10 +1496,9 @@ function showOverlay() {
 }
 
 function showOverlayPersistent() {
-  const overlay = document.getElementById('player-overlay');
-  if (!overlay) return;
   clearTimeout(state.overlayTimer);
-  overlay.classList.add('visible');
+  const overlay = document.getElementById('player-overlay');
+  if (overlay) overlay.classList.add('visible');
 }
 
 // ── Watch history ─────────────────────────────────────────────────────────────
@@ -865,8 +1535,10 @@ function onKey(e) {
   const k      = e.keyCode;
   const screen = state.screen;
 
-  if (screen === 'about')  { if (handleAbout(k))   e.preventDefault(); return; }
-  if (screen === 'home')   { if (handleHome(k))    e.preventDefault(); return; }
+  if (state.playerSettingsOpen) { if (handlePlayerSettings(k)) e.preventDefault(); return; }
+
+  if (screen === 'about')  { if (handleAbout(k))       e.preventDefault(); return; }
+  if (screen === 'home')   { if (handleHomeScreen(k))  e.preventDefault(); return; }
   if (screen === 'search') { if (handleSearch(k))  e.preventDefault(); return; }
   if (screen === 'series') { if (handleSeries(k))  e.preventDefault(); return; }
   if (screen === 'player') { if (handlePlayer(k))  e.preventDefault(); return; }
@@ -901,7 +1573,7 @@ function handleSeries(k) {
   else if (k === KEY.DOWN)  state.focusEp = Math.min(max, state.focusEp + epCols);
   else if (k === KEY.LEFT)  state.focusEp = Math.max(0, state.focusEp - 1);
   else if (k === KEY.RIGHT) state.focusEp = Math.min(max, state.focusEp + 1);
-  else if (k === KEY.ENTER) { playEpisode(videos[state.focusEp].id); return true; }
+  else if (k === KEY.ENTER) { playEpisode(state.focusEp); return true; }
   else if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
     if (state.prevScreen === 'search') showSearch(false);
     else showHome();
@@ -916,7 +1588,7 @@ function handleSeries(k) {
 function handlePlayer(k) {
   const video = document.getElementById('video');
 
-  if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) {
+  if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE || k === KEY.STOP) {
     stopPlayback();
     if (state.series) { showScreen('series'); renderSeries(); }
     else showHome();
@@ -925,21 +1597,47 @@ function handlePlayer(k) {
 
   showOverlay();
 
-  if (k === KEY.ENTER || k === KEY.PLAY || k === KEY.PAUSE || k === KEY.PLAYPAUSE) {
-    if (video) video.paused ? video.play().catch(e => console.warn('[video] play() rejected:', e.name)) : video.pause();
-  } else if (k === KEY.RIGHT || k === KEY.FF) {
-    if (video) video.currentTime += 10;
-  } else if (k === KEY.LEFT || k === KEY.REW) {
-    if (video) video.currentTime = Math.max(0, video.currentTime - 10);
-  } else if (k === KEY.STOP) {
-    stopPlayback();
-    if (state.series) { showScreen('series'); renderSeries(); }
-    else showHome();
-  } else {
-    return false;
+  // Dedicated hardware transport buttons always work, regardless of focus zone.
+  if (k === KEY.PLAY || k === KEY.PAUSE || k === KEY.PLAYPAUSE) {
+    togglePlayPause(video);
+    return true;
+  }
+  if (k === KEY.FF) {
+    if (video) { video.currentTime += 10; updatePlayerBar(); }
+    return true;
+  }
+  if (k === KEY.REW) {
+    if (video) { video.currentTime = Math.max(0, video.currentTime - 10); updatePlayerBar(); }
+    return true;
   }
 
-  return true;
+  const inSeekZone = state.playerZone === 'seek';
+
+  if (k === KEY.LEFT) {
+    if (inSeekZone) { if (video) { video.currentTime = Math.max(0, video.currentTime - 10); updatePlayerBar(); } }
+    else movePlayerControlFocus(-1);
+    return true;
+  }
+  if (k === KEY.RIGHT) {
+    if (inSeekZone) { if (video) { video.currentTime += 10; updatePlayerBar(); } }
+    else movePlayerControlFocus(1);
+    return true;
+  }
+  if (k === KEY.UP) {
+    if (!inSeekZone) { state.playerZone = 'seek'; renderPlayerFocus(); }
+    return true;
+  }
+  if (k === KEY.DOWN) {
+    if (inSeekZone) { state.playerZone = 'controls'; renderPlayerFocus(); }
+    return true;
+  }
+  if (k === KEY.ENTER) {
+    if (inSeekZone) togglePlayPause(video);
+    else activateFocusedPlayerControl(video);
+    return true;
+  }
+
+  return false;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

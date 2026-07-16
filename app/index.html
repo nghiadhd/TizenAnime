@@ -2,6 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TizenAnime</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23e53935'/><text x='50' y='72' font-size='58' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'>TA</text></svg>">
   <link rel="stylesheet" href="style.css">
@@ -30,18 +31,47 @@
 
 <!-- ── Home ───────────────────────────────────────────────────────────────── -->
 <div id="screen-home" class="screen">
-  <nav id="sidebar">
-    <div class="sidebar-logo">TizenAnime</div>
-    <ul id="sidebar-list"></ul>
-    <p id="sidebar-version" class="sidebar-version"></p>
-  </nav>
-  <div id="home-content">
-    <div id="home-header">
-      <h2 id="home-cat-name"></h2>
-      <span id="home-page-info"></span>
+  <nav id="home-sidebar">
+    <div id="home-nav-home" class="home-sidebar-icon" title="Trang Chủ">
+      <svg viewBox="0 0 24 24" width="1.5rem" height="1.5rem" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      <span class="home-sidebar-label">Trang Chủ</span>
     </div>
-    <div id="home-grid"></div>
-    <div id="home-loading" class="center-loading hidden"><div class="spinner"></div></div>
+    <div id="home-search-btn" class="home-sidebar-icon" title="Tìm Kiếm">
+      <svg viewBox="0 0 24 24" width="1.5rem" height="1.5rem" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+      <span class="home-sidebar-label">Tìm Kiếm</span>
+    </div>
+    <div id="home-nav-continue" class="home-sidebar-icon hidden" title="Đang Xem">
+      <svg viewBox="0 0 24 24" width="1.5rem" height="1.5rem" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/></svg>
+      <span class="home-sidebar-label">Đang Xem</span>
+    </div>
+    <div id="home-nav-latest" class="home-sidebar-icon" title="Mới Nhất">
+      <svg viewBox="0 0 24 24" width="1.5rem" height="1.5rem" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+      <span class="home-sidebar-label">Mới Nhất</span>
+    </div>
+    <div id="home-nav-genre" class="home-sidebar-icon" title="Hành Động">
+      <svg viewBox="0 0 24 24" width="1.5rem" height="1.5rem" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
+      <span class="home-sidebar-label">Hành Động</span>
+    </div>
+  </nav>
+  <div id="home-scroll">
+    <div id="home-hero">
+      <div id="home-hero-backdrop"></div>
+      <div id="home-hero-gradient"></div>
+      <div id="home-hero-content">
+        <div id="home-hero-title"></div>
+        <div id="home-hero-desc"></div>
+        <div id="home-hero-actions">
+          <div id="home-hero-play" class="hero-btn hero-btn-play">▶ Phát</div>
+          <div id="home-hero-info" class="hero-btn">ⓘ Thông Tin</div>
+        </div>
+      </div>
+      <div id="home-hero-loading" class="center-loading hidden"><div class="spinner"></div></div>
+    </div>
+    <div id="home-rows"></div>
+    <div id="home-catgrid" class="hidden">
+      <div class="home-row-title" id="home-catgrid-title"></div>
+      <div class="home-category-grid" id="home-catgrid-items"></div>
+    </div>
   </div>
 </div>
 
@@ -64,16 +94,36 @@
 <!-- ── Player ─────────────────────────────────────────────────────────────── -->
 <div id="screen-player" class="screen">
   <video id="video" autoplay></video>
+  <div id="player-buffering" class="center-loading hidden"><div class="spinner"></div></div>
+  <div id="player-error" class="hidden"></div>
   <div id="player-overlay">
-    <div id="player-title"></div>
-    <div class="player-bar">
-      <span id="player-time">0:00 / 0:00</span>
-      <div class="seek-bar"><div id="seek-fill"></div></div>
+    <div id="player-top">
+      <div id="player-title"></div>
+      <div id="player-end-hint" class="hidden">Đã hết. Nhấn Quay lại để xem chi tiết.</div>
     </div>
-    <div id="player-hint">◀▶ Tua  •  OK Tạm dừng  •  ← Quay lại</div>
+    <div id="player-bottom">
+      <div class="seek-bar"><div id="seek-fill"></div><div id="seek-handle"></div></div>
+      <div class="player-controls">
+        <div class="player-controls-left">
+          <div id="player-rew" class="player-icon-btn">&#9664;&#9664;</div>
+          <div id="player-playpause" class="player-icon-btn player-icon-btn-lg">&#10074;&#10074;</div>
+          <div id="player-ff" class="player-icon-btn">&#9654;&#9654;</div>
+          <span id="player-time">0:00 / 0:00</span>
+        </div>
+        <div class="player-controls-right">
+          <div id="player-settings" class="player-icon-btn">&#9881;</div>
+          <div id="player-next-ep" class="player-icon-btn hidden">&#9197;<span class="player-next-ep-label">Tập tiếp</span></div>
+        </div>
+      </div>
+    </div>
   </div>
+  <div id="player-settings-overlay" class="overlay hidden"></div>
 </div>
 
-<script src="https://tizenanime-proxy.nghiadhd.workers.dev/app"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+<!-- DEV ONLY: points at local app.js for `python3 -m http.server` testing.
+     MUST be reverted to https://tizenanime-proxy.nghiadhd.workers.dev/app before any commit —
+     production TVs load app.js live through that Worker to bypass TizenBrew's file cache. -->
+<script src="app.js?v=20260716b"></script>
 </body>
 </html>

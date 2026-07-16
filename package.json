@@ -1,8 +1,8 @@
 {
   "name": "tizenanime",
   "appName": "TizenAnime",
-  "version": "1.0.26",
-  "description": "Watch anime from Wibu47 on your Samsung TV",
+  "version": "1.0.0",
+  "description": "Watch anime from AnimeVsub on your Samsung TV",
   "packageType": "app",
   "appPath": "app/index.html",
   "serviceFile": "dist/service.js",
