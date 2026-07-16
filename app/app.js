@@ -184,6 +184,16 @@ function slugFromHref(href) {
   return (href || '').replace(/^https?:\/\/[^/]+/, '').match(/^\/([^/?#]+)/)?.[1];
 }
 
+// animevsub.app blocks direct image hotlinking (unlike TizenPhim's phimimg.com),
+// and its posters are .webp — both of which the TV webview can't load directly.
+// Route them through the weserv image CDN, which fetches server-side and
+// re-encodes to JPEG. Idempotent so it's safe on already-proxied/stored URLs.
+function posterUrl(u) {
+  if (!u) return '';
+  if (u.indexOf('images.weserv.nl') !== -1) return u;
+  return 'https://images.weserv.nl/?url=' + encodeURIComponent('ssl:' + u.replace(/^https?:\/\//i, '')) + '&output=jpg';
+}
+
 function parseCards(doc) {
   const items = [], seen = new Set();
   doc.querySelectorAll('.movie-item').forEach(card => {
@@ -196,7 +206,7 @@ function parseCards(doc) {
     const img = card.querySelector('img');
     let poster = img?.getAttribute('src') || img?.getAttribute('data-src') || '';
     if (poster && !poster.startsWith('http')) poster = BASE + poster;
-    items.push({ id: slug, name, poster, type: 'series' });
+    items.push({ id: slug, name, poster: posterUrl(poster), type: 'series' });
   });
   return items;
 }
@@ -220,7 +230,7 @@ async function fetchMeta(slug) {
   // og:title is "<Name> Vietsub | Animevsub" — strip the site suffix.
   const name = rawTitle.replace(/\s*\|\s*Animevsub.*$/i, '').replace(/\s+Vietsub\s*$/i, '').trim() || slug;
 
-  const poster      = doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || '';
+  const poster      = posterUrl(doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || '');
   const description = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || '';
 
   const videos = [], seenEp = new Set();
