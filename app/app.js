@@ -1443,6 +1443,10 @@ function startPlayback(url, resumeTime) {
   // last resort for the (Tizen-unlikely) case where MSE/hls.js is unavailable.
   if (window.Hls && window.Hls.isSupported()) {
     state.hls = new window.Hls({
+      // Cap the already-played (back) buffer — its default is unbounded, so long
+      // content accumulates a large in-memory buffer that can exhaust a low-RAM
+      // Tizen TV and cause constant rebuffering.
+      backBufferLength: 30,
       maxBufferLength: preset.maxBufferLength,
       maxMaxBufferLength: preset.maxMaxBufferLength,
       maxBufferSize: preset.maxBufferSize,
